@@ -1,0 +1,114 @@
+project_name: gTokenbasedTDM3_allspkbeatx_NEWcodec_templ4h2d256_depl2h1d256_ulf256_causal_bf16
+
+is_train: True
+ddp: False
+# training_speakers: [2] 
+beatx_data_path: datasets/beat_english_v2.0.0/
+embody3d_path: datasets/embody_3d_aiagent/
+
+deps_path: assets_dep/
+
+cache_path: datasets/data_cache/embody3d_dyadic/database.hdf5
+beatx_cache_path: datasets/data_cache/beatx/database.hdf5
+embody3d_cache_path: datasets/data_cache/embody3d_dyadic/database.hdf5
+
+lowerbodycodec_ckpt: experiments/allspk_release_lowertranscodec/last_705.safetensors
+# upperbodycodec_ckpt: experiments/demoexp_uppercodecbeatx/last_180.safetensors
+upperbodycodec_ckpt: experiments/allspk_release_lowertranscodec/last_490.safetensors
+facecodec_ckpt: experiments/allspk_release_facecodec/last_380.safetensors
+
+
+is_continue: False
+
+# additional_data: True
+out_path: ./experiments/
+dataset: unified
+# new_cache: False
+# ori_joints: beat_smplx_joints
+# tar_joints: beat_smplx_full
+# pose_rep: smplxflame_25 # TODO: Change this
+pose_norm: False
+body_part: full
+
+
+motion_fps: 25
+lowertrans_nfeats: 61
+upperlower_nfeats: 258 # full body 55 * 6 + 3 trans + 4 contact
+face_nfeats: 106
+
+
+random_seed: 2342
+
+pose_length: 250
+frame_chunk_size: 2
+# datastride: 20
+audio_sr: 24000
+audio_fps: 24000
+
+gestureformer_layers: 4
+gestureformer_heads: 2
+gestureformer_depformer_layers: 2
+gestureformer_depformer_heads: 1
+
+# gesturecode kwargs
+transformer_layers: 8
+convblock_layers: 2
+transformer_heads: 4
+num_temp_classifiers: 1
+param_dtype: "bfloat16"
+optim_dtype: "float32" 
+
+# batch_size: 16
+lr_base: 1e-4
+loader_workers: 16
+grad_norm: 1.0
+opt: adamw
+lr_policy: step
+
+pretrain_warmup_epochs: 50 # 1
+inputtoken_noise_prob: 0 # 0.05
+memory_dropout_prob: 0.1
+memory_embnoise_prob: 0 
+
+
+drop_lower_crossattn: True # False # whether to drop cross-attention for lower gesture tokens
+lower_bodypart_dropprob: 0.1
+
+gan_loss_weight: 0.0
+contrastive_loss_weight: 0.1 # 0.1
+genrecon_loss_weight: 0.0 # 0.5 # 0.1
+
+vad_guidance: True
+vad_use_face_logits: False
+vad_loss_weight: 0.05 
+
+trainer: UpperFaceLowerGTDM3 
+face_loss_weight: 2.5
+
+dataset_ratio: full_beatx_lowervalid 
+
+textaudio_emb_freeze: False
+varying_frame_length: False
+align_first_frame_yaw: True
+
+# change for allspk
+epochs: 10000
+decay_epochs: 500
+test_period:  20
+decay_rate: 0.8
+log_period: 25
+
+# # for only scott data
+# epochs: 100000
+# decay_epochs: 2000
+# test_period:  500
+# decay_rate: 0.8
+# log_period: 10
+
+
+# # for only lower data
+# epochs: 100000
+# decay_epochs: 1000
+# test_period:  500
+# decay_rate: 0.8
+# log_period: 10

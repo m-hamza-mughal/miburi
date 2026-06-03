@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# miburi-demo -- launch the MIBURI gest-server-face2 demo from any shell.
+#
+# Behaviour:
+#   1. cd into the MIBURI repo.
+#   2. Locate conda and source its shell hook (so `conda activate` works
+#      even in non-interactive / non-login shells where conda isn't
+#      auto-initialized).
+#   3. Activate the `miburi` env.
+#   4. Run gest-server-face2 with the canonical glm-config + cfg-coef,
+#      forwarding any extra args (e.g. `--minimal-audio-ui`,
+#      `--mixamo-character y_bot`) straight through.
+#
+# Usage:
+#   miburi-demo                                  # default demo
+#   miburi-demo --minimal-audio-ui               # minimal-UI mode
+#   miburi-demo --mixamo-character y_bot         # render Y-bot
+#   miburi-demo --minimal-audio-ui --mixamo-character andromeda
+#
+# Override the env name or repo path at call time if needed:
+#   MIBURI_ENV=miburi_cu12 miburi-demo
+#   MIBURI_DIR=/custom/path miburi-demo
+
+set -euo pipefail
+
+# Resolve repo root from this script's location, so a symlinked
+# miburi-demo on $PATH still finds the right checkout. Override with
+# MIBURI_DIR if you want to point at a different clone.
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+DEFAULT_MIBURI_DIR="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+MIBURI_DIR="${MIBURI_DIR:-${DEFAULT_MIBURI_DIR}}"
+CONDA_ENV="${MIBURI_ENV:-miburi_cu12}"
+
+# ---- locate conda --------------------------------------------------------
+if [[ -n "${CONDA_EXE:-}" && -x "${CONDA_EXE}" ]]; then
+    CONDA_BASE="$(dirname "$(dirname "${CONDA_EXE}")")"
+elif command -v conda >/dev/null 2>&1; then
+    CONDA_BASE="$(conda info --base)"
+else
+    echo "miburi-demo: cannot locate a conda installation" >&2
+    echo "  set CONDA_EXE or add 'conda' to PATH" >&2
+    exit 1
+fi
+
+CONDA_HOOK="${CONDA_BASE}/etc/profile.d/conda.sh"
+if [[ ! -f "${CONDA_HOOK}" ]]; then
+    echo "miburi-demo: missing ${CONDA_HOOK}" >&2
+    exit 1
+fi
+# shellcheck disable=SC1090
+source "${CONDA_HOOK}"
+
+# ---- enter project + env -------------------------------------------------
+if [[ ! -d "${MIBURI_DIR}" ]]; then
+    echo "miburi-demo: MIBURI_DIR not found: ${MIBURI_DIR}" >&2
+    exit 1
+fi
+cd "${MIBURI_DIR}"
+conda activate "${CONDA_ENV}"
+
+# ---- launch --------------------------------------------------------------
+exec python -m miburi.gest-server \
+    --glm-config experiments/allspk_release_gtdm3_exp/config.yaml \
+    --glm-cfg-coef 1.3 \
+    "$@"

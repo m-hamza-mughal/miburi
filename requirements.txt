@@ -1,0 +1,33 @@
+# Convenience mirror of the dependencies declared in pyproject.toml.
+# `pip install -e .` is the recommended install (it reads pyproject.toml directly);
+# use this file only if you'd rather install dependencies without installing the
+# miburi package itself (e.g. for a CI lint job).
+#
+# Note: torch / torchvision / torchaudio are intentionally NOT listed here.
+# Install them first via the appropriate CUDA index URL, as described in README.md.
+
+numpy>=1.26,<2.3
+safetensors>=0.4.0,<0.6
+huggingface-hub>=0.24,<0.29
+einops>=0.7,<0.9
+sentencepiece==0.2
+sounddevice==0.5
+sphn>=0.1.4
+aiohttp>=3.10.5,<3.12
+smplx
+trimesh
+h5py
+matplotlib
+scikit-learn
+tqdm
+opencv-python
+loguru
+tensorboard
+viser
+pyrender
+transformers
+pandas
+configargparse
+setuptools<81
+soundfile
+librosa

@@ -1,0 +1,89 @@
+project_name: gesturemimivqcodec_causal_onlybeatx_facebeatx_25fps_framechunksize2_l4h2c2_ldim256codedim128codebook4
+is_train: True
+ddp: False
+
+beatx_data_path: datasets/beat_english_v2.0.0/
+embody3d_path: datasets/embody_3d_aiagent/
+
+deps_path: assets_dep/
+
+cache_path: datasets/data_cache/embody3d_dyadic/database.hdf5
+beatx_cache_path: datasets/data_cache/beatx/database.hdf5
+embody3d_cache_path: datasets/data_cache/embody3d_dyadic/database.hdf5
+
+# is_continue: False
+# continue_ckpt: 
+
+out_path: ./experiments/
+dataset: unified
+pose_norm: False
+
+
+motion_fps: 25
+nfeats: 106 # full body 55 * 6 + 3 trans + 4 contact
+
+
+random_seed: 2342
+
+pose_length: 250
+frame_chunk_size: 2
+datastride: 20
+audio_sr: 24000
+audio_fps: 24000
+
+transformer_layers: 4
+convblock_layers: 2
+transformer_heads: 2
+
+
+batch_size: 32
+smplx_chunk_per_batch_multiplier: 128
+
+latent_dtype: bfloat16
+
+audio_rep: None # melspec, wav2vec for mel change audio_fps
+word_rep: bert_framealigned # bert_framealigned, bert, glove_framealigned
+id_rep: idx # idx, onehot
+
+body_part: face
+
+dataset_ratio: full_beatx
+
+trainer: FaceExpCausalCodec
+opt: adamw
+
+lr_base: 1e-4
+loader_workers: 16
+grad_norm: 1.0
+lr_policy: step
+
+rec_weight: 1
+rec_pos_weight: 1
+rec_aa_weight: 1
+rec_6d_weight: 1
+rec_face_weight: 6
+rec_ver_weight: 1
+rec_loc_weight: 10
+lap_weight: 100
+
+rec_trans_weight: 2
+rec_contact_weight: 1
+
+globalorient_weight: 10
+accel_penalty_weight: 9e-1
+
+comloss_weight: 0.25
+kl_warmup_epochs: 25
+
+use_wavelet: False
+
+epochs: 2000
+
+varying_frame_length: True
+align_first_frame_yaw: True
+
+# change for allspk/1spk
+decay_epochs: 100
+test_period: 5
+log_period: 50
+decay_rate: 0.75

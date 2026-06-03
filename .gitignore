@@ -1,0 +1,120 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# mypy / pyright / pytype
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# IDEs
+.vscode/
+.idea/
+*~
+
+# Local Claude Code workspace files
+CLAUDE.md
+.claude/
+
+# Misc dev artifacts
+*.log
+trace*.json
+*.nsys-rep
+*.sqlite
+*.pem
+timings.json
+mlx-trace.json
+
+# Tensorboard event files (regenerated on every run)
+events.out.tfevents.*
+
+# Training-run output dirs (other than the released demo checkpoints under experiments/demoexp_*)
+experiments_embody3d/
+experiments_semint/
+experiments/*/
+results/
+experiments/**/*.log
+
+# Datasets directory: ignore subfolders (large data, caches) but keep top-level
+# files like DATASET.md tracked. The named entries below cover symlinks --
+# git tracks a symlink as a small "file" whose content is the target path, so
+# `datasets/*/` (which only matches directories) does not cover them.
+datasets/*/
+datasets/beat_english_v2.0.0
+datasets/embody_3d_aiagent
+datasets/data_cache
+datasets/data_cache_backup
+
+scripts/trainers/dataloaders/seamlessinteraction/
+scripts/trainers/dataloaders/beatx/depreceated*
+scripts/trainers/dataloaders/embody3d_dyadic/depreceated*
+
+scripts/sanity_check_unified_dataset.py
+
+# Maintainer-only release tooling (HF upload script, scratch tools, etc.).
+# Public users do not need any of this — the user-facing download path is
+# `miburi-download-checkpoints` (see miburi/download_checkpoints.py).
+scripts/release/
+scripts/slurm/
+
+assets_dep/*/
+
+configs/gtdm3_audiotext_ufl_25_embody3dbeatx_allspk.yaml

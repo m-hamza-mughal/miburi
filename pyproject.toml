@@ -1,0 +1,59 @@
+[project]
+name = "miburi"
+requires-python = ">= 3.12"
+description = "MIBURI: Towards Expressive Interactive Gesture Synthesis (CVPR 2026)"
+dependencies = [
+    "numpy >= 1.26, < 2.3",
+    "safetensors >= 0.4.0, < 0.6",
+    "huggingface-hub >= 0.24, < 0.29",
+    "einops >= 0.7, < 0.9",
+    "sentencepiece == 0.2",
+    "sounddevice == 0.5",
+    "sphn == 0.1.4",
+    "aiohttp >= 3.10.5, < 3.12",
+    "smplx",
+    "trimesh",
+    "h5py",
+    "matplotlib",
+    "scikit-learn",
+    "tqdm",
+    "opencv-python",
+    "loguru",
+    "tensorboard",
+    "viser",
+    "pyrender",
+    "transformers",
+    "pandas",
+    "configargparse",
+    "setuptools<81",
+    "soundfile",
+    "librosa",
+]
+authors = [{name = "M. Hamza Mughal", email = "mmughal@mpi-inf.mpg.de"}]
+maintainers = [{name = "M. Hamza Mughal", email = "mmughal@mpi-inf.mpg.de"}]
+license = {text = "MIT"}
+dynamic = ["version"]
+readme = "README.md"
+
+[tool.setuptools.dynamic]
+version = {attr = "miburi.__version__"}
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+miburi-download-checkpoints = "miburi.download_checkpoints:main"
+miburi-download-assets = "miburi.download_assets:main"
+
+[project.optional-dependencies]
+dev = [
+    "pyright",
+    "pytest",
+    "flake8",
+    "pre-commit",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["miburi*"]
