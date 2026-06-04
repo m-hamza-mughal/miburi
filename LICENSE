@@ -1,31 +1,67 @@
-MIT License
+MIBURI: Towards Expressive Interactive Gesture Synthesis (CVPR 2026)
+Copyright (c) 2026 M. Hamza Mughal, Rishabh Dabral, Vera Demberg,
+                   Christian Theobalt.
 
-Copyright (c) 2026 M. Hamza Mughal, Rishabh Dabral, Vera Demberg, Christian Theobalt
+This work — including the MIBURI source code, model architectures,
+training configurations, and released checkpoint weights distributed via
+https://huggingface.co/m-hamza-mughal/miburi-release-checkpoints — is
+licensed under the Creative Commons Attribution-NonCommercial 4.0
+International License (CC BY-NC 4.0).
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+You are free to:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+  * Share  — copy and redistribute the material in any medium or format.
+  * Adapt  — remix, transform, and build upon the material.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Under the following terms:
 
+  * Attribution.   You must give appropriate credit (cite the MIBURI paper
+                   below), provide a link to the license, and indicate if
+                   changes were made. You may do so in any reasonable
+                   manner, but not in any way that suggests the licensor
+                   endorses you or your use.
+  * NonCommercial. You may not use the material for commercial purposes.
+  * No additional restrictions. You may not apply legal terms or
+                   technological measures that legally restrict others
+                   from doing anything the license permits.
 
-Third-party notices
--------------------
+To view a copy of this license, visit
+https://creativecommons.org/licenses/by-nc/4.0/legalcode
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA
+94042, USA. This LICENSE file is a human-readable summary; the legalcode
+at the URL above is the binding agreement.
 
-This codebase is a fork of Kyutai's Moshi/Mimi (https://github.com/kyutai-labs/moshi),
-released by Kyutai under the MIT license. Portions of that codebase are themselves
-adapted from Meta's AudioCraft (https://github.com/facebookresearch/audiocraft),
-also released under the MIT license; see LICENSE.audiocraft for the AudioCraft
-copyright notice.
+------------------------------------------------------------------------
+Upstream code and weights bundled with MIBURI
+------------------------------------------------------------------------
+
+Portions of this codebase derive from third-party projects under their
+own licenses. The CC BY-NC 4.0 terms above apply only to MIBURI-original
+contributions; upstream files retain their original licenses.
+
+  * Kyutai Moshi / Mimi (https://github.com/kyutai-labs/moshi) — MIT
+    License. The Moshi 7B + Mimi runtime weights are fetched at demo
+    time from https://huggingface.co/kyutai/moshiko-pytorch-bf16 and
+    https://huggingface.co/kyutai/moshi-artifacts under CC-BY 4.0
+    (Kyutai).
+  * Meta AudioCraft (https://github.com/facebookresearch/audiocraft) —
+    MIT License. See LICENSE.audiocraft for the full upstream notice.
+  * SMPL-X (Max Planck Society / Perceiving Systems). The SMPL-X model
+    used at demo time is distributed via the companion HF repo
+    https://huggingface.co/m-hamza-mughal/miburi-release-assets under
+    the SMPL-X model license (non-commercial only). See
+    https://smpl-x.is.tue.mpg.de/modellicense.html.
+  * Adobe Mixamo characters (https://www.mixamo.com). The Mixamo
+    character bundles in the companion assets repo are governed by the
+    Adobe Mixamo terms of use:
+    https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html.
+
+------------------------------------------------------------------------
+Citation
+------------------------------------------------------------------------
+
+If you use MIBURI in your research, please cite:
+
+  Mughal, M. H., Dabral, R., Demberg, V., Theobalt, C.
+  MIBURI: Towards Expressive Interactive Gesture Synthesis.
+  CVPR 2026.  https://arxiv.org/abs/2603.03282

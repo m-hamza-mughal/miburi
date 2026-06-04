@@ -10,6 +10,18 @@ Implementation for **MIBURI: Towards Expressive Interactive Gesture Synthesis** 
 MIBURI is a real-time, dialogue-driven full-body gesture + facial-expression synthesis system. A frozen Moshi 7B LM supplies text + audio embeddings that condition a custom Gesture LM (`GTemporalDepthModel3`), which autoregressively emits multi-codebook gesture tokens. Three streaming RVQ-style codecs (upper+hands / lower+trans / face+exp) decode those tokens into SMPL-X motion at 25 fps, rendered live in a Viser viewer alongside Moshi's spoken reply.
 
 ---
+### Citation
+
+```bibtex
+@InProceedings{mughal2026miburi,
+	title = {MIBURI: Towards Expressive Interactive Gesture Synthesis},
+	author = {M. Hamza Mughal and Rishabh Dabral and Vera Demberg and Christian Theobalt},
+	booktitle={Computer Vision and Pattern Recognition (CVPR)},
+	year={2026}
+}
+```
+
+---
 
 ## Installation
 
@@ -346,3 +358,17 @@ python scripts/test.py \
 ```
 
 `GestureMetrics` logs `Facial L2`, `Facial L-Vel`, `fgd score`, `align score`, `gt align score`, `L1div score`, `GT L1div score`. The metric handles both BEATX (`<beatx_data_path>/wave16k/<file_id>.wav`) and embody3d_dyadic (`<embody3d_path>/<smpid>/<spkid>/audio_separated/<smpid>.wav`) audio path layouts; the branch is taken automatically based on the `file_id` shape.
+
+---
+
+## License
+
+MIBURI — source code, model architectures, training configs, and released checkpoint weights — is licensed under **CC BY-NC 4.0** (Creative Commons Attribution-NonCommercial 4.0 International). See [`LICENSE`](LICENSE) for the full text. Research and academic use is welcome; commercial use is not permitted.
+
+Portions of the codebase derive from third-party projects under their own licenses, which the CC BY-NC 4.0 terms do **not** override:
+
+- **Kyutai Moshi / Mimi** runtime code is MIT-licensed; the runtime weights are fetched at demo time from [`kyutai/moshiko-pytorch-bf16`](https://huggingface.co/kyutai/moshiko-pytorch-bf16) and [`kyutai/moshi-artifacts`](https://huggingface.co/kyutai/moshi-artifacts) under CC-BY 4.0 (Kyutai).
+- **Meta AudioCraft** — MIT-licensed; see [`LICENSE.audiocraft`](LICENSE.audiocraft).
+- **SMPL-X model** ([`assets_dep/smplx_2020/`](assets_dep/smplx_2020/), distributed via [`m-hamza-mughal/miburi-release-assets`](https://huggingface.co/m-hamza-mughal/miburi-release-assets)) — Max Planck Society; non-commercial only. See the [SMPL-X model license](https://smpl-x.is.tue.mpg.de/modellicense.html).
+- **Adobe Mixamo characters** ([`assets_dep/mixamo_characters_release/`](assets_dep/mixamo_characters_release/)) — Adobe [Mixamo terms of use](https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html).
+

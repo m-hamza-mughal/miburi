@@ -31,7 +31,7 @@ dependencies = [
 ]
 authors = [{name = "M. Hamza Mughal", email = "mmughal@mpi-inf.mpg.de"}]
 maintainers = [{name = "M. Hamza Mughal", email = "mmughal@mpi-inf.mpg.de"}]
-license = {text = "MIT"}
+license = {text = "CC-BY-NC-4.0"}
 dynamic = ["version"]
 readme = "README.md"
 
