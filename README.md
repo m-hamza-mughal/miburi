@@ -50,7 +50,7 @@ pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https
 pip install .             # editable: pip install -e .
 ```
 
-`pip install .` reads [`pyproject.toml`](pyproject.toml) and installs everything else (Moshi runtime, SMPL-X, Viser, the renderer stack, etc.). A convenience [`requirements.txt`](requirements.txt) mirrors the same list for users who'd rather install dependencies without the package itself (e.g. for a CI lint job).
+`pip install .` reads [`pyproject.toml`](pyproject.toml) and installs everything else (Moshi runtime, SMPL-X, Viser, the renderer stack, etc.). A convenience [`requirements.txt`](requirements.txt) mirrors the same list for installing dependencies without the package itself.
 
 ### 3. Download release assets + checkpoints
 
@@ -158,6 +158,18 @@ python -m miburi.gest-server \
 ---
 
 ## Training
+
+### Step 0 — Download the BEATX dataset (optional, training only)
+
+If you don't already have a BEAT2-English checkout on disk, fetch the MIBURI-flavoured fork (BEAT2 + the MIBURI/RAG-Gesture annotations the pipeline needs) into `datasets/beat_english_v2.0.0/`:
+
+```bash
+miburi-download-beatx-dataset                    # ~16.6 GB into datasets/beat_english_v2.0.0/
+```
+
+This pulls 4 subdirs from [`m-hamza-mughal/beat2-additional-annotations`](https://huggingface.co/datasets/m-hamza-mughal/beat2-additional-annotations) (a fork of [H-Liu1997/BEAT2](https://huggingface.co/datasets/H-Liu1997/BEAT2)): `smplxflame_25/` (25 fps motion, MIBURI), `whisper_transcription/` (transcripts with casing+punctuation, MIBURI), `wave16k/` (audio, BEAT2 inherited), `weights/` (CNN motion autoencoder weights for the FGD metric, BEAT2 inherited).
+
+The **demo path does not need this** — it's only required for training MIBURI from scratch or building the eval HDF5 cache for `scripts/test.py`.
 
 ### Step 1 — Build per-dataset HDF5 caches
 

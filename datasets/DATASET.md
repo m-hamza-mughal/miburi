@@ -27,15 +27,26 @@ Two source datasets are supported: **BEATX (BEAT2 English)** and **embody3d_dyad
 
 ### BEATX (BEAT2 English)
 
-Point your BEAT2 English checkout into [`datasets/beat_english_v2.0.0/`](beat_english_v2.0.0/). The expected layout is:
+Two ways to populate [`datasets/beat_english_v2.0.0/`](beat_english_v2.0.0/):
+
+**Option A — fetch from Hugging Face (recommended).** A fork at [`m-hamza-mughal/beat2-additional-annotations`](https://huggingface.co/datasets/m-hamza-mughal/beat2-additional-annotations) combines the upstream [`H-Liu1997/BEAT2`](https://huggingface.co/datasets/H-Liu1997/BEAT2) data with the additional annotations contributed by the MIBURI + [RAG-Gesture](https://vcai.mpi-inf.mpg.de/projects/RAG-Gesture/) projects. The MIBURI repo ships a one-line download for the 4 subdirs the pipeline actually reads (~16.6 GB):
+
+```bash
+miburi-download-beatx-dataset
+```
+
+**Option B — bring your own BEAT2-English checkout.** Point it at [`datasets/beat_english_v2.0.0/`](beat_english_v2.0.0/) directly, with the layout below. The MIBURI annotations (`smplxflame_25/`, `whisper_transcription/`) aren't in upstream BEAT2 — you'll have to either download those subdirs from the Hugging Face fork above (e.g. via `huggingface-cli download m-hamza-mughal/beat2-additional-annotations --include 'beat_english_v2.0.0/smplxflame_25/*'`) or generate them yourself from the 30 fps source.
 
 ```
 datasets/beat_english_v2.0.0/
 ├── smplxflame_25/               # per-take SMPL-X motion .npz @ 25 fps
 ├── wave16k/                     # per-take 16 kHz mono audio .wav
 ├── whisper_transcription/       # per-take Whisper transcripts .json
-└── train_test_split.csv         # official split file
+├── weights/                     # CNN motion autoencoder weights for FGD
+└── train_test_split.csv         # official split file (BEAT2)
 ```
+
+By downloading these files you agree to honor the upstream licenses: BEAT2 is Apache 2.0. Citation guidance lives in the [HF dataset card](https://huggingface.co/datasets/m-hamza-mughal/beat2-additional-annotations).
 
 ### Embody3D dyadic (AIAgent)
 
@@ -49,9 +60,9 @@ datasets/embody_3d_aiagent/
 └── ...
 ```
 
-### Seamless Interaction *(optional, not used by the released demo)*
+<!-- ### Seamless Interaction *(optional, not used by the released demo)*
 
-Seamless Interaction is wired through `scripts/trainers/dataloaders/seamlessinteraction/` for ablation runs. The released MIBURI checkpoints are not trained on it, so you can skip this for the standard recipe.
+Seamless Interaction is wired through `scripts/trainers/dataloaders/seamlessinteraction/` for ablation runs. The released MIBURI checkpoints are not trained on it, so you can skip this for the standard recipe. -->
 
 ---
 

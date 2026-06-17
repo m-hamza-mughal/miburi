@@ -117,4 +117,7 @@ scripts/slurm/
 
 assets_dep/*/
 
+# Internal planning notes (deployment, roadmap, scratch design docs).
+notes/
+
 configs/gtdm3_audiotext_ufl_25_embody3dbeatx_allspk.yaml

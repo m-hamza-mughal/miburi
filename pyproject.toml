@@ -45,6 +45,7 @@ build-backend = "setuptools.build_meta"
 [project.scripts]
 miburi-download-checkpoints = "miburi.download_checkpoints:main"
 miburi-download-assets = "miburi.download_assets:main"
+miburi-download-beatx-dataset = "miburi.download_beatx_dataset:main"
 
 [project.optional-dependencies]
 dev = [
