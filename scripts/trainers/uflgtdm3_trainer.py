@@ -1428,10 +1428,7 @@ class UpperFaceLowerGTDM3Trainer(BaseGLMTrainer):
                 in_tar_pose_lower = torch.cat((tar_pose_lower, tar_trans_vel, tar_contact), dim=-1)
                 
                 upper_codes_gt = self.upper_gesture_codec.encode(in_tar_pose_upper) # B x K=8 x T=25
-                # CLAUDE REMOVE START --- IGNORE ---
-                lower_codes_gt = self.lower_gesture_codec.encode(in_tar_pose_lower) # B x K=8 x T=25
-                face_codes_gt = self.face_gesture_codec.encode(in_tar_pose_face) # B x K=4 x T=25
-                # CLAUDE REMOVE END --- IGNORE ---
+                
                 
                 lower_cross_attn_mask = torch.zeros(
                     bs, 
@@ -1711,18 +1708,7 @@ class UpperFaceLowerGTDM3Trainer(BaseGLMTrainer):
                     tar_beta_b = tar_beta[sl][0]  # one (300,) per item
 
                     sample_save_path = os.path.join(results_save_path, sample_names[b])
-                    # CLAUDE REMOVE START --- IGNORE ---
-                    os.makedirs(sample_save_path, exist_ok=True)
-                    np.savez(os.path.join(sample_save_path, 'upper_tokens.npz'),
-                        upper_tokens = upper_codes_gt.cpu().numpy()
-                    )
-                    np.savez(os.path.join(sample_save_path, 'lower_tokens.npz'),
-                        lower_tokens = lower_codes_gt.cpu().numpy()
-                    )
-                    np.savez(os.path.join(sample_save_path, 'face_tokens.npz'),
-                        face_tokens = face_codes_gt.cpu().numpy()
-                    )
-                    # CLAUDE REMOVE END --- IGNORE ---
+                    
                     if save or visualize:
                         os.makedirs(sample_save_path, exist_ok=True)
 

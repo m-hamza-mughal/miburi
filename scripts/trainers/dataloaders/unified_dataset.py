@@ -192,24 +192,13 @@ class UNIFIEDDataset(data.Dataset):
 
         
 
-        # CLAUDE REMOVE START --- IGNORE ---
-        # breakpoint()  # check the loaded chunk_id_df before filtering with chunk_id_list
-        self.chunk_ids = self.chunk_id_df
-        chunk_id_list_path = "/CT/GestureSynth1/work/GestureMoshi/moshi/moshi/experiments_embody3d/1116_1525_gTokenbasedTDM3_goodspkbeatxlowervalid_templ4h2d256_depl2h1d256_ulf256_causal_bf16_nocaonlower_contmmdfix_VADguidance_cfgzero_templargedepsmall_ulf_nobp_noaembfinetune_from4000_lowdp/test_6500_idle/chunk_ids.txt"
-        with open(chunk_id_list_path, 'r') as f:
-            chunk_id_list = f.read().splitlines()
-        print(chunk_id_list)
-        # self.chunk_ids = self.chunk_ids[self.chunk_ids['filechunk_id'].isin(chunk_id_list)].reset_index(drop=True)
-        self.chunk_id_df = self.chunk_id_df[self.chunk_id_df['filechunk_id'].isin(chunk_id_list)].reset_index(drop=True)
-
-        print(f"After filtering with chunk_id_list, number of chunks in {self.loader_type} split: {len(self.chunk_id_df)}")
-        # CLAUDE REMOVE END --- IGNORE ---
         
-        # CLAUDE UNCOMMENT START --- IGNORE ---
-        # self.chunk_id_df = self.chunk_id_df[
-        #     self.chunk_id_df["split"] == self.loader_type
-        # ].reset_index(drop=True)
-        # CLAUDE UNCOMMENT END --- IGNORE ---
+        
+        # 
+        self.chunk_id_df = self.chunk_id_df[
+            self.chunk_id_df["split"] == self.loader_type
+        ].reset_index(drop=True)
+        #
 
         if self.tiny:
             self.chunk_id_df = self.chunk_id_df.iloc[:100].reset_index(drop=True)
