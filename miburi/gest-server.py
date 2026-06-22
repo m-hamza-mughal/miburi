@@ -972,15 +972,21 @@ def main():
     model_path = Path(model_path).resolve()
     
     log("info", "starting motion visualization server")
+    # Characters shipped on the public release-assets HF repo. `y_bot` is the
+    # only Mixamo bundle distributed publicly; 
+
     mixamo_path: str | None = args.mixamo_character
     if mixamo_path is not None and not Path(mixamo_path).is_file():
         # Treat as slug -> assets_dep/mixamo_characters_release/<slug>.npz
         slug_path = Path("assets_dep/mixamo_characters_release") / f"{mixamo_path}.npz"
         if not slug_path.is_file():
-            raise FileNotFoundError(
-                f"--mixamo-character {args.mixamo_character!r}: not a file and "
-                f"slug not found at {slug_path}"
+            raise NotImplementedError(
+                f"--mixamo-character {args.mixamo_character!r}: this "
+                f"character bundle is not distributed in the public "
+                f"release. Use `y_bot` instead, or supply a local .npz "
+                f"path produced by scripts/fit_mixamo_character.py."
             )
+            
         mixamo_path = str(slug_path)
     motion_proc = start_motion_server(
         args.host,

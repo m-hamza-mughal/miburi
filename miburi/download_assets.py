@@ -7,7 +7,7 @@ After ``pip install .``, run::
 This pulls three subtrees (~200 MB total) into ``assets_dep/``:
 
 - ``demo-static/``                — embedded Moshi UI frontend (~1 MB)
-- ``mixamo_characters_release/``  — 4 Mixamo characters (.npz) (~8 MB)
+- ``mixamo_characters_release/``  — 1 Mixamo character (`y_bot.npz`, ~1 MB)
 - ``smplx_2020/``                 — SMPL-X NEUTRAL 2020 model (~115 MB)
 
 Re-running is a no-op once cached. By downloading you agree to honor the
@@ -31,9 +31,10 @@ DEFAULT_LOCAL_DIR = "assets_dep"
 REQUIRED_FILES = [
     "demo-static/index.html",
     "mixamo_characters_release/y_bot.npz",
-    "mixamo_characters_release/ch08.npz",
-    "mixamo_characters_release/ch31.npz",
-    "mixamo_characters_release/remy.npz",
+    # ch08.npz / ch31.npz / remy.npz are kept local-only — not in the
+    # public HF release-assets repo. The demo refuses those slugs with a
+    # NotImplementedError if a user passes --mixamo-character ch08/ch31/remy
+    # and the file isn't on disk.
     "smplx_2020/smplx/SMPLX_NEUTRAL_2020.npz",
 ]
 

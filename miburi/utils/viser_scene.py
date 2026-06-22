@@ -69,9 +69,13 @@ def make_smplx_model(
     model.NUM_JOINTS = SMPLX_NUM_JOINTS
 
     # Standard smplx stores expression dirs in `expr_dirs`; mixamo_character
-    # reads `exprdirs`. Alias so either name resolves.
-    if not hasattr(model, "exprdirs"):
-        model.exprdirs = model.expr_dirs
+    # reads `exprdirs`. Expose a property on the class that dynamically
+    # forwards to `self.expr_dirs` — a plain attribute alias gets stale once
+    # the model is moved to GPU (nn.Module._apply reassigns registered
+    # buffers but leaves the unregistered alias pointing at the old CPU
+    # tensor, which then trips a device-mismatch in prepare_runtime_caches).
+    if not isinstance(getattr(type(model), "exprdirs", None), property):
+        type(model).exprdirs = property(lambda self: self.expr_dirs)
 
     # `.device` is not a default nn.Module attribute. Bind a property so
     # `self.smplx_model.device` keeps working at every call site.

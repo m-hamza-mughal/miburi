@@ -121,3 +121,5 @@ assets_dep/*/
 notes/
 
 configs/gtdm3_audiotext_ufl_25_embody3dbeatx_allspk.yaml
+
+tests/

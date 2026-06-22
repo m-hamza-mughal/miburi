@@ -77,7 +77,7 @@ Three subtrees pulled from [`m-hamza-mughal/miburi-release-assets`](https://hugg
 | Path | Role | Size |
 | --- | --- | ---: |
 | `assets_dep/demo-static/` | Embedded Moshi audio UI (frontend assets the demo server statically serves) | ~1 MB |
-| `assets_dep/mixamo_characters_release/` | 4 Mixamo character `.npz` bundles (`y_bot`, `ch08`, `ch31`, `remy`) for `--mixamo-character <slug>` | ~8 MB |
+| `assets_dep/mixamo_characters_release/` | 1 Mixamo character `.npz` bundle (`y_bot`) for `--mixamo-character y_bot` | ~1 MB |
 | `assets_dep/smplx_2020/` | SMPL-X NEUTRAL 2020 model `.npz` used for vertex decoding | ~115 MB |
 
 Override with `miburi-download-assets --local-dir <other> --repo-id <namespace>/<repo>`.
@@ -142,7 +142,7 @@ You can perform same steps for 23-spk experiment `scripts/miburi-demo-allspk`
 miburi-demo                                              # default demo
 miburi-demo --minimal-audio-ui                           # collapse the audio pane (only mic visible)
 miburi-demo --mixamo-character y_bot                     # render with a Mixamo character bundle
-miburi-demo --minimal-audio-ui --mixamo-character ch31
+miburi-demo --minimal-audio-ui --mixamo-character y_bot
 ```
 
 If your env is named something other than `miburi` (e.g. `miburi_cu12`), override per call: `MIBURI_ENV=miburi_cu12 miburi-demo`.
