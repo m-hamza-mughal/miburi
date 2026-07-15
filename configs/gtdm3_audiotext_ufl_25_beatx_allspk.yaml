@@ -13,8 +13,7 @@ beatx_cache_path: datasets/data_cache/beatx/database.hdf5
 embody3d_cache_path: datasets/data_cache/embody3d_dyadic/database.hdf5
 
 lowerbodycodec_ckpt: experiments/allspk_release_lowertranscodec/last_705.safetensors
-# upperbodycodec_ckpt: experiments/demoexp_uppercodecbeatx/last_180.safetensors
-upperbodycodec_ckpt: experiments/allspk_release_lowertranscodec/last_490.safetensors
+upperbodycodec_ckpt: experiments/allspk_release_uppercodec/last_490.safetensors
 facecodec_ckpt: experiments/allspk_release_facecodec/last_380.safetensors
 
 
