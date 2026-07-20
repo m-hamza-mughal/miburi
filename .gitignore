@@ -114,6 +114,7 @@ scripts/sanity_check_unified_dataset.py
 # `miburi-download-checkpoints` (see miburi/download_checkpoints.py).
 scripts/release/
 scripts/slurm/
+scripts/artifacts/
 
 assets_dep/*/
 
