@@ -52,8 +52,12 @@ PRICE_PER_HOUR = {
     "a100-large": 2.50,
 }
 
-# Stages during which the Space is on the clock.
-BILLED_STAGES = {"RUNNING", "RUNNING_BUILDING", "RUNNING_APP_STARTING", "BUILDING", "APP_STARTING"}
+# Stages during which the Space is on the clock. Note that a plain BUILDING
+# is NOT billed -- the docs are explicit that there is no cost during build,
+# and nothing is running yet. RUNNING_BUILDING is different: the previous
+# revision is still up while the new one builds. Counting plain BUILDING
+# would let a long, free build trip the budget cap.
+BILLED_STAGES = {"RUNNING", "RUNNING_BUILDING", "RUNNING_APP_STARTING", "APP_STARTING"}
 
 DEFAULT_HARDWARE = "l40sx1"
 DEFAULT_SLEEP = 900  # 15 min idle -> sleep (free) without a full teardown
