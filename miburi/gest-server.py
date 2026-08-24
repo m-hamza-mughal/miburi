@@ -174,6 +174,7 @@ def start_motion_server(
     smplx_dir: str,
     mixamo_character: str | None = None,
     motion_stream: str = "vertices",
+    motion_decimate: int = 0,
 ) -> subprocess.Popen:
     cmd = [
         sys.executable,
@@ -189,6 +190,8 @@ def start_motion_server(
         smplx_dir,
         "--motion-stream",
         motion_stream,
+        "--motion-decimate",
+        str(motion_decimate),
     ]
     if mixamo_character:
         cmd.extend(["--mixamo-character", mixamo_character])
@@ -783,6 +786,14 @@ def main():
              "~3x the traffic, keeps per-vertex Mixamo colours).",
     )
     parser.add_argument(
+        "--motion-decimate", type=int, default=0,
+        help="Stream a decimated character mesh of about N vertices. 0 "
+             "(default) = full resolution. The motion is unchanged; only the "
+             "rendered surface gets coarser. SMPL-X 10475 -> 3500 cuts the "
+             "viewer stream about 3x, which matters because Viser drops "
+             "frames (newest wins) when a client cannot keep up.",
+    )
+    parser.add_argument(
         "--embed-viser", action="store_true",
         help="Serve the Viser motion viewer through this server's port "
              "instead of its own. Required anywhere only one port is "
@@ -1021,6 +1032,7 @@ def main():
         model_path,
         mixamo_character=mixamo_path,
         motion_stream=args.motion_stream,
+        motion_decimate=args.motion_decimate,
     )
     try:
         state = ServerState(checkpoint_info.model_type, mimi, text_tokenizer, lm, gesture_lm, gesture_codecs,

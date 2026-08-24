@@ -21,6 +21,7 @@ from .utils.viser_scene import (
     setup_scene,
     write_mesh,
 )
+from .utils.decimate import face_vertex_mask, load_or_build
 from .utils.mixamo_character import (
     MixamoCharacter,
     load_mixamo_character,
@@ -63,6 +64,8 @@ class MotionVisualizer:
         queue_maxsize: int = 32,
         mixamo_character_path: str | Path | None = None,
         motion_stream: str = "vertices",
+        decimate: int = 0,
+        decimate_face_detail: float = 6.0,
         # uvmap_path: str | None = None,
     ):
         self.smplx_model = smplx_model
@@ -77,6 +80,13 @@ class MotionVisualizer:
         #   vertices AND faces 25x/s. Only viable on a LAN, but it is the only
         #   path that carries per-vertex colours (Mixamo textures).
         self.motion_stream = motion_stream
+        # Decimation table: a fixed subset of the character's own vertices
+        # plus a retriangulated face list. Built once from the rest pose, so
+        # the per-frame cost is one gather. See utils/decimate.py.
+        self.decimate = decimate
+        self.decimate_face_detail = decimate_face_detail
+        self._keep_idx = None
+        self._faces_dec = None
         self._mesh_handle = None
         # Rolling per-frame timing, logged every _STAT_EVERY frames. Splits
         # the cost into pose (GPU LBS + device->host) vs push (viser
@@ -144,6 +154,13 @@ class MotionVisualizer:
                 self.vertex_colors = [200/255, 200/255, 200/255, 1.0]
             log("info", f"motion_vis_server: rendering Mixamo character "
                        f"'{mc.name}' (V={mc.num_verts}, F={mc.num_faces})")
+
+        if self.decimate and self.motion_stream == "vertices":
+            try:
+                self._build_decimation()
+            except Exception as exc:
+                log("warning", f"motion_vis_server: decimation disabled ({exc!r})")
+                self._keep_idx = self._faces_dec = None
 
         # Move the world floor below the character's feet by rebuilding
         # /floor at the character's feet Y. setup_scene already added the
@@ -289,6 +306,43 @@ class MotionVisualizer:
         mesh.visual.vertex_colors = self.vertex_colors
         return mesh
     
+    def _build_decimation(self) -> None:
+        """Precompute the vertex subset for whichever character we render.
+
+        Works for both paths: the Mixamo bundle carries its own rest verts,
+        faces and LBS weights, and at 27850 verts it benefits even more than
+        SMPL-X does.
+        """
+        if self.mixamo_character is not None:
+            mc = self.mixamo_character
+            verts = mc.verts_tpose.detach().cpu().numpy()
+            faces = mc.faces.detach().cpu().numpy()
+            w = mc.lbs_weights.detach().cpu().numpy()
+            from .utils.decimate import FACE_JOINTS
+            cols = [j for j in FACE_JOINTS if j < w.shape[1]]
+            fmask = w[:, cols].sum(axis=1) > 0.5
+            name = mc.name
+        else:
+            verts = self.smplx_model.v_template.detach().cpu().numpy()
+            f = self.smplx_model.faces
+            faces = f if isinstance(f, np.ndarray) else f.detach().cpu().numpy()
+            fmask = face_vertex_mask(self.smplx_model)
+            name = "smplx"
+
+        cache = Path("assets_dep") / "decimation_cache" / \
+            f"{name}_{self.decimate}_{self.decimate_face_detail:g}.npz"
+        table = load_or_build(
+            cache, verts, faces, face_mask=fmask,
+            target_verts=self.decimate, face_detail=self.decimate_face_detail,
+        )
+        self._keep_idx = np.asarray(table["keep_idx"], dtype=np.int64)
+        self._faces_dec = np.asarray(table["faces"], dtype=np.uint32)
+        full = len(verts) * 3 * 4
+        cut = len(self._keep_idx) * 3 * 4
+        log("info", f"motion_vis_server: decimation on -- {len(verts)} -> "
+                    f"{len(self._keep_idx)} verts, {full/1024:.0f} -> {cut/1024:.0f} kB/frame "
+                    f"({full/cut:.1f}x less at the same 25 fps)")
+
     def get_posed_vertices(
         self, forward_kwargs: dict[str, torch.Tensor]
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -482,6 +536,9 @@ class MotionVisualizer:
             _t0 = time.perf_counter()
             if self.motion_stream == "vertices":
                 verts, faces = self.get_posed_vertices(forward_kwargs)
+                if self._keep_idx is not None:
+                    verts = verts[self._keep_idx]
+                    faces = self._faces_dec
                 _t1 = time.perf_counter()
                 if self._mesh_handle is None:
                     self._mesh_handle = self.viser_server.scene.add_mesh_simple(
@@ -520,6 +577,16 @@ def main() -> None:
                              "streams only the vertex buffer. 'glb' re-exports "
                              "the whole mesh every frame (legacy; ~3x the "
                              "traffic, but keeps per-vertex Mixamo colours).")
+    parser.add_argument("--motion-decimate", type=int, default=0,
+                        help="Stream a decimated mesh of about N vertices "
+                             "instead of the full one. 0 (default) = off. "
+                             "The motion is unchanged; only the surface gets "
+                             "coarser, which cuts per-frame bytes roughly "
+                             "linearly. SMPL-X 10475 -> 3500 is ~3x less.")
+    parser.add_argument("--decimate-face-detail", type=float, default=6.0,
+                        help="How much finer the facial grid is than the body "
+                             "grid when decimating. Higher keeps more of the "
+                             "face, where expression lives.")
     parser.add_argument("--mixamo-character", type=str, default=None,
                         help="Path to a Mixamo character .npz bundle "
                              "(e.g. assets_dep/mixamo_characters_release/y_bot.npz). "
@@ -543,6 +610,8 @@ def main() -> None:
         smplx_model, viser_server, state,
         mixamo_character_path=args.mixamo_character,
         motion_stream=args.motion_stream,
+        decimate=args.motion_decimate,
+        decimate_face_detail=args.decimate_face_detail,
     )
     app = web.Application()
     app.router.add_get("/ws/motion", visualizer.websocket_handler)
