@@ -167,6 +167,14 @@ def _tick(a: HfApi, space: str, interval: int, budget: float, dry_run: bool) -> 
     """One poll. Returns True if the Space was downgraded."""
     rt = a.get_space_runtime(repo_id=space)
     stage, hw = str(rt.stage), str(rt.hardware)
+    # HF reports hardware.current as None while a hardware change is in
+    # flight, but the GPU can already be attached and billing during that
+    # window -- observed 2026-08-24, where the ledger read $0.00 through
+    # several minutes of real A100 time. Fall back to the requested tier so
+    # the guard errs toward over-counting rather than under-counting; a cost
+    # cap that reads low is worse than useless.
+    if hw in ("None", "", "cpu-basic") and rt.requested_hardware:
+        hw = str(rt.requested_hardware)
     rate = PRICE_PER_HOUR.get(hw, 0.0)
     on_clock = stage in BILLED_STAGES and rate > 0
 

@@ -59,6 +59,14 @@ ARG BAKE_WEIGHTS=1
 COPY --chown=user bake_weights.py ./
 RUN if [ "$BAKE_WEIGHTS" = "1" ]; then python bake_weights.py; fi
 
+# Pin viser AFTER the weight bake so changing it never invalidates that
+# 18 GB layer. Its client and server negotiate a "viser-v<version>"
+# subprotocol and reject a mismatch, and the client bundle is served from the
+# installed package -- so an unpinned viser means the deployed pair is
+# whatever was latest at build time: untested, and unaddressable by any
+# external client speaking a known version.
+RUN pip install --user --force-reinstall --no-deps "viser==1.0.29"
+
 COPY --chown=user entrypoint.sh offline_server.py ./
 COPY --chown=user offline ./offline
 RUN chmod +x entrypoint.sh
