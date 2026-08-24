@@ -14,10 +14,13 @@ cd "$HOME/app"
 PORT="${PORT:-7860}"
 ACCEL="${ACCELERATOR:-none}"
 
+# Ask torch, not $ACCELERATOR. The docs say ACCELERATOR is "none" on CPU-only
+# Spaces; the platform actually reports "cpu" on cpu-basic. An exclusion list
+# is therefore not safe in either direction -- a value we have not seen would
+# be read as "GPU present" and the demo would crash on "Found no NVIDIA
+# driver". torch.cuda.is_available() is the authoritative answer, and the
+# ~10 s import is paid once per container start.
 has_gpu() {
-    [ -n "$ACCEL" ] && [ "$ACCEL" != "none" ] && return 0
-    # ACCELERATOR is set by the platform, but don't let a missing/renamed env
-    # var silently downgrade a GPU Space to the landing page.
     python -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null
 }
 
