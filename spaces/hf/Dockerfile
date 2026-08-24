@@ -47,6 +47,21 @@ RUN pip install --user \
       torch==2.9.0 torchaudio==2.9.0 \
       --index-url https://download.pytorch.org/whl/cu126
 
+# --- weights ---------------------------------------------------------------
+# ABOVE the miburi install on purpose. bake_weights.py imports only
+# huggingface_hub, so this ~18 GB layer does not depend on the application
+# code and survives every miburi change -- the difference between a one
+# minute rebuild and a seven minute one. Build time is unbilled, GPU runtime
+# is not, so a cold start never waits on a download.
+# ~18 GB: Moshi 7B bf16 + Mimi + 8 MIBURI checkpoint dirs + SMPL-X + the
+# Moshi web UI bundle.
+# huggingface_hub normally arrives as a miburi dependency, but miburi is
+# installed *below* this layer now, so it has to be explicit here.
+RUN pip install --user "huggingface-hub>=0.24,<0.29"
+ARG BAKE_WEIGHTS=1
+COPY --chown=user bake_weights.py ./
+RUN if [ "$BAKE_WEIGHTS" = "1" ]; then python bake_weights.py; fi
+
 # --- miburi + demo deps ----------------------------------------------------
 # Pin to a commit, never a branch. Docker keys a layer on the instruction
 # TEXT, so "git+...@main" stays cache-valid forever even after main moves:
@@ -56,13 +71,11 @@ RUN pip install --user \
 ARG MIBURI_REF=569099b5849a84bacaab5bc4daf2ec7e32b6514c
 RUN pip install --user "miburi @ git+https://github.com/m-hamza-mughal/miburi@${MIBURI_REF}"
 
-# --- weights ---------------------------------------------------------------
-# Baked during the (unbilled) build so a GPU cold start never waits on a
-# 16 GB download. ~18 GB total: Moshi 7B bf16 + Mimi + 8 MIBURI checkpoint
-# dirs + SMPL-X + the Moshi web UI bundle.
-ARG BAKE_WEIGHTS=1
-COPY --chown=user bake_weights.py ./
-RUN if [ "$BAKE_WEIGHTS" = "1" ]; then python bake_weights.py; fi
+# The repo ids and filenames in bake_weights.py are duplicated from miburi so
+# that the layer above can stay independent of it. This re-checks them against
+# the package now that it is installed, so the copies cannot drift silently --
+# a stale constant fails the build here instead of the first boot.
+RUN python bake_weights.py --verify
 
 # Pin viser AFTER the weight bake so changing it never invalidates that
 # 18 GB layer. Its client and server negotiate a "viser-v<version>"
