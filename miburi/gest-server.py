@@ -25,6 +25,7 @@ import copy
 
 from types import SimpleNamespace
 from .client_utils import log
+from .single_port import VISER_ROUTE, attach_viser_routes
 from .utils.motion_utils import get_gesture_condition_tensors, inverse_selection_tensor_smplx, get_smplx_bodypart_masks, velocity2position_mixeddiff
 from .models import loaders, MimiModel, LMModel, LMGen, GestureLMGen, GestureMimiCodec, GTemporalDepthModel3
 from .run_gestinference import get_condition_tensors
@@ -172,6 +173,7 @@ def start_motion_server(
     motion_port: int,
     smplx_dir: str,
     mixamo_character: str | None = None,
+    motion_stream: str = "vertices",
 ) -> subprocess.Popen:
     cmd = [
         sys.executable,
@@ -185,6 +187,8 @@ def start_motion_server(
         str(motion_port),
         "--smplx-dir",
         smplx_dir,
+        "--motion-stream",
+        motion_stream,
     ]
     if mixamo_character:
         cmd.extend(["--mixamo-character", mixamo_character])
@@ -725,6 +729,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="localhost", type=str)
     parser.add_argument("--port", default=8998, type=int)
+    parser.add_argument("--bind", default=None, type=str,
+                        help="Interface to bind the HTTP server to. Defaults to --host. "
+                        "Use 0.0.0.0 in a container.")
     parser.add_argument("--static", type=str, default="assets_dep/demo-static")
     parser.add_argument("--gradio-tunnel", action='store_true', help='Activate a gradio tunnel.')
     parser.add_argument("--gradio-tunnel-token",
@@ -768,6 +775,23 @@ def main():
              "instead of the default SMPL-X body.",
     )
     parser.add_argument(
+        "--motion-stream", type=str, default="vertices",
+        choices=["vertices", "glb"],
+        help="How each motion frame reaches the browser. 'vertices' "
+             "(default) adds the mesh once then streams only the vertex "
+             "buffer. 'glb' re-exports the whole mesh every frame (legacy; "
+             "~3x the traffic, keeps per-vertex Mixamo colours).",
+    )
+    parser.add_argument(
+        "--embed-viser", action="store_true",
+        help="Serve the Viser motion viewer through this server's port "
+             "instead of its own. Required anywhere only one port is "
+             "publicly reachable (Hugging Face Spaces, most PaaS). The "
+             "dashboard then iframes '/viser', which serves Viser's "
+             "single-file client bundle and proxies its WebSocket to the "
+             "internal --viser-port.",
+    )
+    parser.add_argument(
         "--minimal-audio-ui", action="store_true",
         help="Hide the transcript text panel and Server Audio Stats panel "
              "in the embedded Moshi audio UI (purely a presentation toggle; "
@@ -785,6 +809,8 @@ def main():
     )
 
     args = parser.parse_args()
+    if args.bind is None:
+        args.bind = args.host
     seed_all(2342)
 
     with open(args.glm_config, 'r') as f:
@@ -994,6 +1020,7 @@ def main():
         args.motion_vis_port,
         model_path,
         mixamo_character=mixamo_path,
+        motion_stream=args.motion_stream,
     )
     try:
         state = ServerState(checkpoint_info.model_type, mimi, text_tokenizer, lm, gesture_lm, gesture_codecs,
@@ -1006,6 +1033,8 @@ def main():
         state.warmup()
         app = web.Application()
         app.router.add_get("/api/chat", state.handle_chat)
+        if args.embed_viser:
+            attach_viser_routes(app, args.viser_port)
         static_path: None | str = None
 
         # args.static = "none"  # disable static content serving for now
@@ -1088,8 +1117,14 @@ def main():
                         headers={"Cache-Control": "no-store"},
                     )
 
-                request_host = request.host.split(":", 1)[0]
-                motion_ui_url = f"http://{request_host}:{args.viser_port}"
+                if args.embed_viser:
+                    # Same-origin: the Viser client derives its WebSocket URL
+                    # from window.location, so this one path serves both the
+                    # bundle and (on upgrade) the proxied socket.
+                    motion_ui_url = VISER_ROUTE
+                else:
+                    request_host = request.host.split(":", 1)[0]
+                    motion_ui_url = f"http://{request_host}:{args.viser_port}"
                 html = build_dashboard_html(
                     "/?mode=audio", motion_ui_url,
                     minimal_audio_ui=args.minimal_audio_ui,
@@ -1141,7 +1176,7 @@ def main():
             log("info", f"Tunnel started, if executing on a remote GPU, you can use {tunnel}.")
             log("info", "Note that this tunnel goes through the US and you might experience high latency in Europe.")
             log("warning", "Tunnel URL only proxies this server port. The motion iframe still points to the local Viser port.")
-        web.run_app(app, port=args.port, ssl_context=ssl_context)
+        web.run_app(app, host=args.bind, port=args.port, ssl_context=ssl_context)
     finally:
         motion_proc.terminate()
         motion_proc.wait(timeout=5)

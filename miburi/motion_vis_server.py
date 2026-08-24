@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import contextlib
 import struct
+import time
 from pathlib import Path
 
 import aiohttp
@@ -61,12 +62,30 @@ class MotionVisualizer:
         mesh_name: str = "/mesh_smplx",
         queue_maxsize: int = 32,
         mixamo_character_path: str | Path | None = None,
+        motion_stream: str = "vertices",
         # uvmap_path: str | None = None,
     ):
         self.smplx_model = smplx_model
         self.viser_server = viser_server
         self.shared_state = shared_state
         self.mesh_name = mesh_name
+        # "vertices": add the mesh once, then push only the per-frame vertex
+        #   buffer (viser sends a partial SceneNodeUpdateMessage carrying just
+        #   that prop). ~3x less traffic than "glb" and no per-frame encode.
+        # "glb":      legacy add_mesh_trimesh() every frame. viser exports the
+        #   whole mesh to GLB on each call, so this re-encodes and re-ships
+        #   vertices AND faces 25x/s. Only viable on a LAN, but it is the only
+        #   path that carries per-vertex colours (Mixamo textures).
+        self.motion_stream = motion_stream
+        self._mesh_handle = None
+        # Rolling per-frame timing, logged every _STAT_EVERY frames. Splits
+        # the cost into pose (GPU LBS + device->host) vs push (viser
+        # serialise + enqueue) so a slow viewer can be told apart from a
+        # slow forward pass.
+        self._stat_n = 0
+        self._stat_pose = 0.0
+        self._stat_push = 0.0
+        self._stat_t0 = None
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=queue_maxsize)
         self._viz_task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
@@ -153,6 +172,10 @@ class MotionVisualizer:
                 self.queue.task_done()
                 drained += 1
         self.mframe_idx = 0
+        self._stat_n = 0
+        self._stat_pose = 0.0
+        self._stat_push = 0.0
+        self._stat_t0 = None
         # Remove the stale character mesh(es) so the viewer doesn't keep
         # showing the previous pose until the first new frame lands. The
         # node lives in Viser's scene tree as "/mesh_smplx" (the displayed
@@ -161,6 +184,9 @@ class MotionVisualizer:
         # name matches `self.mesh_name` exactly OR sits under that path,
         # then drop our bookkeeping dict entry.
         self.shared_state.body_meshes.pop("smplx", None)
+        # Drop the cached streaming handle so the next session re-adds the
+        # mesh instead of pushing vertices at a node that no longer exists.
+        self._mesh_handle = None
         handles_map = getattr(
             self.viser_server.scene, "_handle_from_node_name", {}
         )
@@ -263,6 +289,66 @@ class MotionVisualizer:
         mesh.visual.vertex_colors = self.vertex_colors
         return mesh
     
+    def get_posed_vertices(
+        self, forward_kwargs: dict[str, torch.Tensor]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Posed vertices + faces as numpy, skipping the trimesh round-trip.
+
+        Same maths as `get_smplx_mesh`, but returns raw arrays: the
+        "vertices" stream path never needs a trimesh object, and building one
+        per frame just to read `.vertices` back out is wasted work.
+        """
+        with torch.no_grad():
+            if self.mixamo_character is not None:
+                verts, faces = pose_mixamo_character(
+                    self.mixamo_character, self.smplx_model, forward_kwargs,
+                )
+            else:
+                verts, faces = smplx_forward_fast(
+                    self._smplx_fast_cache, forward_kwargs,
+                )
+        verts_np = verts.squeeze(0).detach().cpu().numpy().astype(np.float32)
+        faces_np = faces.detach().cpu().numpy() if isinstance(faces, torch.Tensor) else np.asarray(faces)
+        return verts_np, faces_np.astype(np.uint32)
+
+    _STAT_EVERY = 50
+
+    def _record_frame_timing(self, t0: float, t1: float, t2: float) -> None:
+        if self._stat_t0 is None:
+            self._stat_t0 = t0
+        self._stat_n += 1
+        self._stat_pose += (t1 - t0) * 1e3
+        self._stat_push += (t2 - t1) * 1e3
+        if self._stat_n < self._STAT_EVERY:
+            return
+        wall = t2 - self._stat_t0
+        n = self._stat_n
+        log("info",
+            f"motion: {n / wall:5.1f} fps produced | "
+            f"pose {self._stat_pose / n:5.1f} ms | "
+            f"push {self._stat_push / n:5.1f} ms | "
+            f"wall {wall / n * 1e3:5.1f} ms/frame | "
+            f"queue {self.queue.qsize()}")
+        self._stat_n = 0
+        self._stat_pose = 0.0
+        self._stat_push = 0.0
+        self._stat_t0 = None
+
+    def _solid_color(self) -> tuple[int, int, int]:
+        """Collapse `self.vertex_colors` to the single RGB tuple viser's
+        non-GLB meshes accept.
+
+        `add_mesh_simple` has no per-vertex colour channel (only `add_glb` /
+        `add_mesh_trimesh` do), so a textured Mixamo bundle renders as its
+        median colour in "vertices" mode. SMPL-X is already a solid colour, so
+        the default demo is pixel-identical either way.
+        """
+        vc = self.vertex_colors
+        if isinstance(vc, np.ndarray) and vc.ndim == 2:
+            med = np.median(vc[:, :3], axis=0)
+            return tuple(int(c) for c in med)
+        return tuple(int(round(float(c) * 255)) for c in list(vc)[:3])
+
     def warmup_smplx(self):
         device = self.smplx_model.device
         dummy_kwargs = {
@@ -393,11 +479,31 @@ class MotionVisualizer:
                 "global_translation": smplx_transl,
             }
 
-            mesh = self.get_smplx_mesh(forward_kwargs)
-            self.shared_state.body_meshes["smplx"] = write_mesh(
-                self.viser_server, mesh, self.mesh_name,
-            )
+            _t0 = time.perf_counter()
+            if self.motion_stream == "vertices":
+                verts, faces = self.get_posed_vertices(forward_kwargs)
+                _t1 = time.perf_counter()
+                if self._mesh_handle is None:
+                    self._mesh_handle = self.viser_server.scene.add_mesh_simple(
+                        name=self.mesh_name,
+                        vertices=verts,
+                        faces=faces,
+                        color=self._solid_color(),
+                        flat_shading=False,
+                        side="front",
+                    )
+                    self.shared_state.body_meshes["smplx"] = self._mesh_handle
+                else:
+                    self._mesh_handle.vertices = verts
+            else:
+                mesh = self.get_smplx_mesh(forward_kwargs)
+                _t1 = time.perf_counter()
+                self.shared_state.body_meshes["smplx"] = write_mesh(
+                    self.viser_server, mesh, self.mesh_name,
+                )
+            _t2 = time.perf_counter()
             self.mframe_idx += 1
+            self._record_frame_timing(_t0, _t1, _t2)
 
 
 def main() -> None:
@@ -407,6 +513,13 @@ def main() -> None:
     parser.add_argument("--viser-port", type=int, default=8081)
     parser.add_argument("--smplx-dir", type=str, required=True)
     parser.add_argument("--uvmap-path", type=str, default=None)
+    parser.add_argument("--motion-stream", type=str, default="vertices",
+                        choices=["vertices", "glb"],
+                        help="How each motion frame reaches the browser. "
+                             "'vertices' (default) adds the mesh once and then "
+                             "streams only the vertex buffer. 'glb' re-exports "
+                             "the whole mesh every frame (legacy; ~3x the "
+                             "traffic, but keeps per-vertex Mixamo colours).")
     parser.add_argument("--mixamo-character", type=str, default=None,
                         help="Path to a Mixamo character .npz bundle "
                              "(e.g. assets_dep/mixamo_characters_release/y_bot.npz). "
@@ -429,6 +542,7 @@ def main() -> None:
     visualizer = MotionVisualizer(
         smplx_model, viser_server, state,
         mixamo_character_path=args.mixamo_character,
+        motion_stream=args.motion_stream,
     )
     app = web.Application()
     app.router.add_get("/ws/motion", visualizer.websocket_handler)
