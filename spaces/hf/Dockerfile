@@ -48,7 +48,12 @@ RUN pip install --user \
       --index-url https://download.pytorch.org/whl/cu126
 
 # --- miburi + demo deps ----------------------------------------------------
-ARG MIBURI_REF=main
+# Pin to a commit, never a branch. Docker keys a layer on the instruction
+# TEXT, so "git+...@main" stays cache-valid forever even after main moves:
+# the image silently keeps an old miburi while the freshly-copied
+# entrypoint passes flags it does not have. Bump this on every miburi
+# change; it busts the cache correctly and makes the build reproducible.
+ARG MIBURI_REF=569099b5849a84bacaab5bc4daf2ec7e32b6514c
 RUN pip install --user "miburi @ git+https://github.com/m-hamza-mughal/miburi@${MIBURI_REF}"
 
 # --- weights ---------------------------------------------------------------
