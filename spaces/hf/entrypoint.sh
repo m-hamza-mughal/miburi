@@ -43,6 +43,6 @@ exec python -m miburi.gest-server \
     --port "${PORT}" \
     --embed-viser \
     --motion-stream "${MIBURI_MOTION_STREAM:-vertices}" \
-    --motion-decimate "${MIBURI_MOTION_DECIMATE:-3500}" \
+    --motion-decimate "${MIBURI_MOTION_DECIMATE:-0}" \
     --static assets_dep/demo-static \
     ${MIBURI_EXTRA_ARGS:-}

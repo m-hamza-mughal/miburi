@@ -44,8 +44,18 @@ def face_vertex_mask(smplx_model, threshold: float = 0.5) -> np.ndarray:
     return w[:, idx].sum(axis=1) > threshold
 
 
-def _cluster(vertices: np.ndarray, cell: np.ndarray) -> np.ndarray:
+def _cluster(vertices: np.ndarray, cell: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Elect one representative vertex per occupied grid cell.
+
+    Returns ``(reps, cell_of_vertex)`` where ``reps[c]`` is the original
+    vertex index representing cell ``c``, and ``cell_of_vertex[v]`` is the
+    cell of vertex ``v``. Both are needed: collapsing a triangle means
+    sending each of its corners to *its own cell's* representative.
+
+    Resolving a vertex to the geometrically nearest representative instead
+    is wrong and looks it -- on a thin surface it sends front-face vertices
+    to back-face representatives and bridges the gap between a limb and the
+    torso, which shreds the mesh into fold-over triangles and holes.
 
     `cell` is per-vertex, so different regions can use different grid sizes
     in a single pass.
@@ -56,19 +66,26 @@ def _cluster(vertices: np.ndarray, cell: np.ndarray) -> np.ndarray:
     dims = keys.max(axis=0) + 1
     flat = (keys[:, 0] * dims[1] + keys[:, 1]) * dims[2] + keys[:, 2]
 
-    order = np.argsort(flat, kind="stable")
-    flat_sorted = flat[order]
-    starts = np.flatnonzero(np.r_[True, flat_sorted[1:] != flat_sorted[:-1]])
+    # `inverse` maps every vertex to its cell, which is exactly the remap the
+    # face rebuild needs once `reps` is indexed by cell.
+    _, inverse = np.unique(flat, return_inverse=True)
+    inverse = inverse.astype(np.int64)
+    n_cells = int(inverse.max()) + 1
+
+    order = np.argsort(inverse, kind="stable")
+    inv_sorted = inverse[order]
+    starts = np.flatnonzero(np.r_[True, inv_sorted[1:] != inv_sorted[:-1]])
     groups = np.split(order, starts[1:])
 
-    reps = np.empty(len(groups), dtype=np.int64)
-    for i, g in enumerate(groups):
+    reps = np.empty(n_cells, dtype=np.int64)
+    for g in groups:
+        c = inverse[g[0]]
         if len(g) == 1:
-            reps[i] = g[0]
+            reps[c] = g[0]
         else:
             pts = vertices[g]
-            reps[i] = g[np.argmin(((pts - pts.mean(axis=0)) ** 2).sum(axis=1))]
-    return np.sort(reps)
+            reps[c] = g[np.argmin(((pts - pts.mean(axis=0)) ** 2).sum(axis=1))]
+    return reps, inverse
 
 
 def build_decimation_table(
@@ -101,28 +118,20 @@ def build_decimation_table(
     for _ in range(40):
         mid = (lo + hi) / 2.0
         cell = np.where(face_mask, mid / face_detail, mid)
-        keep = _cluster(vertices, cell)
-        if best is None or abs(len(keep) - target_verts) < abs(len(best) - target_verts):
-            best = keep
-        if len(keep) > target_verts:
+        reps, inverse = _cluster(vertices, cell)
+        if best is None or abs(len(reps) - target_verts) < abs(len(best[0]) - target_verts):
+            best = (reps, inverse)
+        if len(reps) > target_verts:
             lo = mid          # cells too small -> too many verts
         else:
             hi = mid
-        if abs(len(keep) - target_verts) <= max(8, target_verts // 200):
-            best = keep
+        if abs(len(reps) - target_verts) <= max(8, target_verts // 200):
+            best = (reps, inverse)
             break
-    keep_idx = best
+    keep_idx, remap = best
 
-    # Map every original vertex to the representative of its cell, then
-    # rebuild the triangle list against the reduced vertex array.
-    remap = np.full(len(vertices), -1, dtype=np.int64)
-    remap[keep_idx] = np.arange(len(keep_idx))
-    from scipy.spatial import cKDTree  # noqa: PLC0415 - optional, import late
-    unassigned = np.flatnonzero(remap < 0)
-    if len(unassigned):
-        _, nn = cKDTree(vertices[keep_idx]).query(vertices[unassigned])
-        remap[unassigned] = nn
-
+    # `remap` already sends each vertex to its own cell, and `keep_idx` is
+    # indexed by cell, so the face rebuild is a straight gather.
     new_faces = remap[faces]
     # Drop triangles that collapsed to a line or a point.
     ok = (new_faces[:, 0] != new_faces[:, 1]) & \
