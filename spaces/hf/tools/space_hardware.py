@@ -177,7 +177,11 @@ def _tick(a: HfApi, space: str, interval: int, budget: float, dry_run: bool) -> 
     # several minutes of real A100 time. Fall back to the requested tier so
     # the guard errs toward over-counting rather than under-counting; a cost
     # cap that reads low is worse than useless.
-    if hw in ("None", "", "cpu-basic") and rt.requested_hardware:
+    # Only substitute when the platform reports NOTHING. An explicit
+    # "cpu-basic" is a real answer and means free -- treating it as unknown
+    # billed a GPU rate for genuinely free cpu-basic time and tripped this
+    # cap during a build, cancelling a test window that had cost nothing.
+    if hw in ("None", "") and rt.requested_hardware:
         hw = str(rt.requested_hardware)
     rate = PRICE_PER_HOUR.get(hw, 0.0)
     on_clock = stage in BILLED_STAGES and rate > 0
