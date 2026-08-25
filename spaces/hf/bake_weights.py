@@ -40,7 +40,18 @@ MOSHI_CACHE = "assets_dep/kyutai_cache"
 # --- mirrors miburi.download_assets / download_checkpoints ----------------
 ASSETS_REPO = "m-hamza-mughal/miburi-release-assets"
 ASSETS_PATTERNS = ["demo-static/**", "mixamo_characters_release/**", "smplx_2020/**"]
+# The assets repo stores demo-static/ etc. at its root, so it lands under
+# assets_dep/ directly.
+ASSETS_DEST = "assets_dep"
+
 CKPT_REPO = "m-hamza-mughal/miburi-release-checkpoints"
+CKPT_PATTERNS = ["experiments/**"]
+# The checkpoint repo already carries the "experiments/" prefix, so it must be
+# unpacked at the app root -- targeting "experiments/" would nest it as
+# experiments/experiments/. (miburi.download_checkpoints handles this by
+# flattening afterwards; unpacking one level up is the same result without the
+# rename dance.)
+CKPT_DEST = "."
 
 
 def _log(msg: str) -> None:
@@ -50,12 +61,13 @@ def _log(msg: str) -> None:
 def bake() -> int:
     _log(f"assets  <- {ASSETS_REPO}")
     snapshot_download(repo_id=ASSETS_REPO, repo_type="model",
-                      local_dir=str(APP / "assets_dep"),
+                      local_dir=str(APP / ASSETS_DEST),
                       allow_patterns=ASSETS_PATTERNS)
 
     _log(f"ckpts   <- {CKPT_REPO}")
     snapshot_download(repo_id=CKPT_REPO, repo_type="model",
-                      local_dir=str(APP / "experiments"))
+                      local_dir=str((APP / CKPT_DEST).resolve()),
+                      allow_patterns=CKPT_PATTERNS)
 
     _log(f"moshi   <- {MOSHI_REPO}")
     cache = APP / MOSHI_CACHE
