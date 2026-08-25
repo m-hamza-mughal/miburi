@@ -176,6 +176,7 @@ def start_motion_server(
     mixamo_character: str | None = None,
     motion_stream: str = "vertices",
     motion_decimate: int = 0,
+    motion_stride: int = 1,
 ) -> subprocess.Popen:
     cmd = [
         sys.executable,
@@ -193,6 +194,8 @@ def start_motion_server(
         motion_stream,
         "--motion-decimate",
         str(motion_decimate),
+        "--motion-stride",
+        str(motion_stride),
     ]
     if mixamo_character:
         cmd.extend(["--mixamo-character", mixamo_character])
@@ -806,6 +809,13 @@ def main():
              "~3x the traffic, keeps per-vertex Mixamo colours).",
     )
     parser.add_argument(
+        "--motion-stride", type=int, default=1,
+        help="Render only every Nth motion frame (1 = all 25 fps). Halves "
+             "both GPU posing cost and viewer bandwidth at 2. Viser coalesces "
+             "updates, so a client that cannot drain 25 fps was discarding "
+             "those frames anyway.",
+    )
+    parser.add_argument(
         "--motion-decimate", type=int, default=0,
         help="Stream a decimated character mesh of about N vertices. 0 "
              "(default) = full resolution. The motion is unchanged; only the "
@@ -1062,6 +1072,7 @@ def main():
         mixamo_character=mixamo_path,
         motion_stream=args.motion_stream,
         motion_decimate=args.motion_decimate,
+        motion_stride=args.motion_stride,
     )
     front_proc = None
     if args.public_port:

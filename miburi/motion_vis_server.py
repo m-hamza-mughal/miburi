@@ -64,6 +64,7 @@ class MotionVisualizer:
         queue_maxsize: int = 32,
         mixamo_character_path: str | Path | None = None,
         motion_stream: str = "vertices",
+        motion_stride: int = 1,
         decimate: int = 0,
         decimate_face_detail: float = 6.0,
         # uvmap_path: str | None = None,
@@ -80,6 +81,16 @@ class MotionVisualizer:
         #   vertices AND faces 25x/s. Only viable on a LAN, but it is the only
         #   path that carries per-vertex colours (Mixamo textures).
         self.motion_stream = motion_stream
+        # Render (and therefore send) only every Nth motion frame.
+        #
+        # Viser's message buffer already coalesces same-node updates, so a
+        # client that can only drain ~12 fps silently discards half of a
+        # 25 fps stream. Producing those frames is wasted twice over: the
+        # SMPL-X pose costs real GPU (35.8 ms/frame on the Space's A100,
+        # contending with Moshi) and the bytes cost bandwidth the client
+        # does not have. Skipping them outright reclaims both, and costs
+        # nothing the viewer was actually displaying.
+        self.motion_stride = max(1, int(motion_stride))
         # Decimation table: a fixed subset of the character's own vertices
         # plus a retriangulated face list. Built once from the rest pose, so
         # the per-frame cost is one gather. See utils/decimate.py.
@@ -533,6 +544,12 @@ class MotionVisualizer:
                 "global_translation": smplx_transl,
             }
 
+            # Cheap skip: bail before the SMPL-X forward, not after, so the
+            # GPU work is saved too rather than just the socket write.
+            if self.motion_stride > 1 and (self.mframe_idx % self.motion_stride):
+                self.mframe_idx += 1
+                continue
+
             _t0 = time.perf_counter()
             if self.motion_stream == "vertices":
                 verts, faces = self.get_posed_vertices(forward_kwargs)
@@ -577,6 +594,12 @@ def main() -> None:
                              "streams only the vertex buffer. 'glb' re-exports "
                              "the whole mesh every frame (legacy; ~3x the "
                              "traffic, but keeps per-vertex Mixamo colours).")
+    parser.add_argument("--motion-stride", type=int, default=1,
+                        help="Render only every Nth motion frame. 1 (default) "
+                             "= all 25 fps. 2 halves both the GPU posing cost "
+                             "and the viewer bandwidth; because viser coalesces "
+                             "updates, a client that could not drain 25 fps was "
+                             "discarding those frames anyway.")
     parser.add_argument("--motion-decimate", type=int, default=0,
                         help="Stream a decimated mesh of about N vertices "
                              "instead of the full one. 0 (default) = off. "
@@ -610,6 +633,7 @@ def main() -> None:
         smplx_model, viser_server, state,
         mixamo_character_path=args.mixamo_character,
         motion_stream=args.motion_stream,
+        motion_stride=args.motion_stride,
         decimate=args.motion_decimate,
         decimate_face_detail=args.decimate_face_detail,
     )
