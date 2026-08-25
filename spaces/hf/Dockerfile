@@ -68,7 +68,7 @@ RUN if [ "$BAKE_WEIGHTS" = "1" ]; then python bake_weights.py; fi
 # the image silently keeps an old miburi while the freshly-copied
 # entrypoint passes flags it does not have. Bump this on every miburi
 # change; it busts the cache correctly and makes the build reproducible.
-ARG MIBURI_REF=8d9dec6814e4f4735163a2e192c90efcfb677cb4
+ARG MIBURI_REF=d75cbc2d776d23dd90a20feaeb940b7506eef824
 RUN pip install --user "miburi @ git+https://github.com/m-hamza-mughal/miburi@${MIBURI_REF}"
 
 # The repo ids and filenames in bake_weights.py are duplicated from miburi so
