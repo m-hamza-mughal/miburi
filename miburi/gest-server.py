@@ -26,6 +26,7 @@ import copy
 from types import SimpleNamespace
 from .client_utils import log
 from .single_port import VISER_ROUTE, attach_viser_routes
+from .front_proxy import main as _front_proxy_main  # noqa: F401  (spawned as a module)
 from .utils.motion_utils import get_gesture_condition_tensors, inverse_selection_tensor_smplx, get_smplx_bodypart_masks, velocity2position_mixeddiff
 from .models import loaders, MimiModel, LMModel, LMGen, GestureLMGen, GestureMimiCodec, GTemporalDepthModel3
 from .run_gestinference import get_condition_tensors
@@ -196,6 +197,25 @@ def start_motion_server(
     if mixamo_character:
         cmd.extend(["--mixamo-character", mixamo_character])
     return subprocess.Popen(cmd)
+
+def start_front_proxy(bind: str, public_port: int, gest_port: int, viser_port: int) -> subprocess.Popen:
+    """Own the public port from a process that does no inference.
+
+    Relaying Viser's ~3 MB/s mesh stream inside gest-server's event loop
+    costs the Moshi step ~3 ms and pushes 20% of steps past the 80 ms budget
+    (measured on A100 with a real browser). Here the heavy stream goes
+    browser <-> front_proxy <-> viser and never enters this process; only the
+    ~20 kB/s audio socket is relayed through to us.
+    """
+    cmd = [
+        sys.executable, "-m", "miburi.front_proxy",
+        "--bind", bind,
+        "--port", str(public_port),
+        "--gest-port", str(gest_port),
+        "--viser-port", str(viser_port),
+    ]
+    return subprocess.Popen(cmd)
+
 
 def seed_all(seed):
     torch.manual_seed(seed)
@@ -794,6 +814,15 @@ def main():
              "frames (newest wins) when a client cannot keep up.",
     )
     parser.add_argument(
+        "--public-port", type=int, default=0,
+        help="Serve the single public port from a separate front-proxy "
+             "process. This server then binds --port on localhost only, and "
+             "the proxy routes /viser straight to Viser while forwarding the "
+             "audio socket here. Preferred over --embed-viser anywhere one "
+             "port is exposed: it keeps the heavy mesh stream out of the "
+             "inference event loop.",
+    )
+    parser.add_argument(
         "--embed-viser", action="store_true",
         help="Serve the Viser motion viewer through this server's port "
              "instead of its own. Required anywhere only one port is "
@@ -1034,6 +1063,14 @@ def main():
         motion_stream=args.motion_stream,
         motion_decimate=args.motion_decimate,
     )
+    front_proc = None
+    if args.public_port:
+        # With a front proxy in place this server is internal only.
+        args.bind = "127.0.0.1"
+        front_proc = start_front_proxy(
+            "0.0.0.0", args.public_port, args.port, args.viser_port,
+        )
+
     try:
         state = ServerState(checkpoint_info.model_type, mimi, text_tokenizer, lm, gesture_lm, gesture_codecs,
                             idle_upper_slice, idle_face_slice,
@@ -1129,7 +1166,7 @@ def main():
                         headers={"Cache-Control": "no-store"},
                     )
 
-                if args.embed_viser:
+                if args.embed_viser or args.public_port:
                     # Same-origin: the Viser client derives its WebSocket URL
                     # from window.location, so this one path serves both the
                     # bundle and (on upgrade) the proxied socket.
@@ -1192,6 +1229,9 @@ def main():
     finally:
         motion_proc.terminate()
         motion_proc.wait(timeout=5)
+        if front_proc is not None:
+            front_proc.terminate()
+            front_proc.wait(timeout=5)
 
 
 with torch.no_grad():

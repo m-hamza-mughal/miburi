@@ -35,13 +35,17 @@ nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || tr
 # --host is internal wiring only (the motion websocket + the viser subprocess);
 # --bind is what faces the platform. Keeping them separate avoids dialling
 # 0.0.0.0 as a destination address.
+# --public-port hands the public socket to a separate front-proxy process, so
+# the ~3 MB/s Viser mesh stream never enters the inference event loop. With it
+# relayed in-process the Moshi step ran 77.1 ms with 20.7% of steps over the
+# 80 ms budget; with the front proxy it is 67.9 ms and 0.0%. This server then
+# listens on localhost only.
 exec python -m miburi.gest-server \
     --glm-config experiments/demoexp_release_gtdm3_goodspk/config.yaml \
     --glm-cfg-coef 1.3 \
     --host 127.0.0.1 \
-    --bind 0.0.0.0 \
-    --port "${PORT}" \
-    --embed-viser \
+    --port 8998 \
+    --public-port "${PORT}" \
     --motion-stream "${MIBURI_MOTION_STREAM:-vertices}" \
     --motion-decimate "${MIBURI_MOTION_DECIMATE:-0}" \
     --static assets_dep/demo-static \

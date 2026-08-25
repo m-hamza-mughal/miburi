@@ -67,6 +67,34 @@ def _requested_subprotocols(request: web.Request) -> tuple[str, ...]:
     return tuple(p.strip() for p in raw.split(",") if p.strip())
 
 
+async def relay(ws_a, ws_b) -> None:
+    """Relay both directions, tearing down as soon as EITHER side ends.
+
+    Waiting on both directions (``asyncio.gather``) deadlocks: when the
+    browser goes away, the browser->server pump finishes but the
+    server->browser pump keeps waiting on an upstream that has no idea the
+    client left. The upstream socket is never closed, so `gest-server` holds
+    its per-conversation lock forever and the *next* connection hangs at the
+    handshake -- i.e. Start Over and every reconnect break.
+    """
+    tasks = {
+        asyncio.create_task(_pump(ws_a, ws_b.send_bytes, ws_b.send_str)),
+        asyncio.create_task(_pump(ws_b, ws_a.send_bytes, ws_a.send_str)),
+    }
+    try:
+        _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for t in pending:
+            t.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+    finally:
+        for ws in (ws_a, ws_b):
+            if not ws.closed:
+                try:
+                    await ws.close()
+                except Exception:
+                    pass
+
+
 async def _pump(src, dst_send_bytes, dst_send_str) -> None:
     """Forward every frame from one WebSocket to the other until it closes."""
     async for msg in src:
@@ -116,10 +144,7 @@ def make_viser_handler(viser_port: int, viser_host: str = "127.0.0.1"):
                 protocols=protocols,
                 autoping=True,
             ) as ws_client:
-                await asyncio.gather(
-                    _pump(ws_client, ws_server.send_bytes, ws_server.send_str),
-                    _pump(ws_server, ws_client.send_bytes, ws_client.send_str),
-                )
+                await relay(ws_client, ws_server)
         except aiohttp.ClientError as exc:
             log("error", f"single_port: viser upstream unreachable ({exc!r})")
         finally:
