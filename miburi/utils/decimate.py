@@ -139,7 +139,14 @@ def build_decimation_table(
          (new_faces[:, 0] != new_faces[:, 2])
     new_faces = new_faces[ok]
     # Drop duplicates (two originals can collapse onto the same triangle).
-    new_faces = np.unique(np.sort(new_faces, axis=1), axis=0)
+    # Sort only to build the dedupe KEY -- assigning the sorted array back
+    # would reorder each triangle's corners and destroy its winding, leaving
+    # roughly half the mesh facing inward. Viser renders side="front", so
+    # those become invisible and the character appears shot through with
+    # black speckles over an otherwise correct silhouette.
+    key = np.sort(new_faces, axis=1)
+    _, first = np.unique(key, axis=0, return_index=True)
+    new_faces = new_faces[np.sort(first)]
 
     return {
         "keep_idx": keep_idx.astype(np.int64),
