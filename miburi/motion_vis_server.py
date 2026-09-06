@@ -22,6 +22,7 @@ from .utils.viser_scene import (
     write_mesh,
 )
 from .utils.decimate import face_vertex_mask, load_or_build
+from .utils import foot_locking as fl
 from .utils.mixamo_character import (
     MixamoCharacter,
     load_mixamo_character,
@@ -30,6 +31,40 @@ from .utils.mixamo_character import (
     build_smplx_fast_cache,
     smplx_forward_fast,
 )
+
+
+def _aa_to_quat(aa: np.ndarray) -> np.ndarray:
+    """Axis-angle -> xyzw quaternion, the convention the locker uses."""
+    theta = float(np.linalg.norm(aa))
+    if theta < 1e-8:
+        return np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    axis = aa / theta
+    half = 0.5 * theta
+    return np.array([*(axis * np.sin(half)), np.cos(half)], dtype=np.float32)
+
+
+def _quat_to_aa(q: np.ndarray) -> np.ndarray:
+    """xyzw quaternion -> axis-angle, taking the shorter arc."""
+    q = np.asarray(q, dtype=np.float32)
+    if q[3] < 0.0:
+        q = -q
+    xyz = q[:3]
+    sin_half = float(np.linalg.norm(xyz))
+    if sin_half < 1e-8:
+        return np.zeros(3, dtype=np.float32)
+    theta = 2.0 * np.arctan2(sin_half, float(q[3]))
+    return (xyz / sin_half * theta).astype(np.float32)
+
+
+def _aa_to_matrix(aa: np.ndarray) -> np.ndarray:
+    """Rodrigues for a single axis-angle vector."""
+    theta = float(np.linalg.norm(aa))
+    if theta < 1e-8:
+        return np.eye(3, dtype=np.float32)
+    x, y, z = aa / theta
+    K = np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]], dtype=np.float32)
+    return (np.eye(3, dtype=np.float32) + np.sin(theta) * K
+            + (1.0 - np.cos(theta)) * (K @ K)).astype(np.float32)
 
 
 def _sample_texture_at_uvs(uvs: np.ndarray, tex_np: np.ndarray) -> np.ndarray:
@@ -65,6 +100,8 @@ class MotionVisualizer:
         mixamo_character_path: str | Path | None = None,
         motion_stream: str = "vertices",
         motion_stride: int = 1,
+        foot_locking: bool = False,
+        foot_lock_blend: float = 0.5,
         decimate: int = 0,
         decimate_face_detail: float = 6.0,
         # uvmap_path: str | None = None,
@@ -96,6 +133,23 @@ class MotionVisualizer:
         # the per-frame cost is one gather. See utils/decimate.py.
         self.decimate = decimate
         self.decimate_face_detail = decimate_face_detail
+        # Foot locking. MIBURI predicts lower-body pose and translation
+        # velocity independently, so a planted foot drifts a few cm/s across
+        # the floor. This removes that online, correcting only leg rotations
+        # -- root translation is left exactly as the model produced it.
+        self._foot_locker = None
+        self._foot_contacts = None
+        self._foot_rig = None
+        self._foot_lock_enabled = bool(foot_locking)
+        self._foot_lock_blend = foot_lock_blend
+        # How far the toes travel per frame before vs after locking, so the
+        # live demo can report whether it is actually doing anything on real
+        # motion rather than only on synthetic tests.
+        self._slide_raw = 0.0
+        self._slide_locked = 0.0
+        self._slide_n = 0
+        self._prev_toes_raw = None
+        self._prev_toes_locked = None
         self._keep_idx = None
         self._faces_dec = None
         self._mesh_handle = None
@@ -166,6 +220,13 @@ class MotionVisualizer:
             log("info", f"motion_vis_server: rendering Mixamo character "
                        f"'{mc.name}' (V={mc.num_verts}, F={mc.num_faces})")
 
+        if self._foot_lock_enabled:
+            try:
+                self._build_foot_locker()
+            except Exception as exc:
+                log("warning", f"motion_vis_server: foot locking disabled ({exc!r})")
+                self._foot_lock_enabled = False
+
         if self.decimate and self.motion_stream == "vertices":
             try:
                 self._build_decimation()
@@ -200,6 +261,9 @@ class MotionVisualizer:
                 self.queue.task_done()
                 drained += 1
         self.mframe_idx = 0
+        if self._foot_locker is not None:
+            self._foot_locker.reset()
+            self._foot_contacts.reset()
         self._stat_n = 0
         self._stat_pose = 0.0
         self._stat_push = 0.0
@@ -317,6 +381,72 @@ class MotionVisualizer:
         mesh.visual.vertex_colors = self.vertex_colors
         return mesh
     
+    def _build_foot_locker(self) -> None:
+        """Set up the causal locker against this demo's own SMPL-X rig."""
+        full = fl.build_foot_rig(self.smplx_model, world_up_axis="y")
+        self._foot_rig = fl.reduce_to_legs(full)
+        motion_fps = 25.0
+        self._foot_locker = fl.OnlineFootLocker(
+            self._foot_rig, fps=motion_fps, blend_time=self._foot_lock_blend,
+        )
+        self._foot_contacts = fl.CausalFootContacts(
+            fps=motion_fps, up=self._foot_rig.up,
+            toe_rest_height=self._foot_rig.legs[0].toe_height,
+        )
+        # Root position is translation + R @ rest_pelvis: smplx_forward_fast
+        # leaves the pelvis rotation identity inside the chain and applies
+        # global_rotation about the origin afterwards, so the pelvis lands at
+        # the rotated rest position plus the translation.
+        self._rest_root = full.offsets[0].astype(np.float32).copy()
+        log("info", f"motion_vis_server: foot locking on -- "
+                    f"{len(self._foot_rig.parents)}-joint leg rig, "
+                    f"blend {self._foot_lock_blend:.2f}s, floor auto-calibrated")
+
+    def _lock_feet(self, motion_frame: torch.Tensor, transl: torch.Tensor) -> torch.Tensor:
+        """Correct one frame's leg rotations in place-ish; returns a new frame.
+
+        `motion_frame` is (1, 165) axis-angle for 55 SMPL-X joints, matching
+        what the demo already unpacks; only the eight leg joints change.
+        """
+        aa = motion_frame[0].detach().cpu().numpy().astype(np.float32).reshape(-1, 3)
+        rig = self._foot_rig
+        chain = rig.chain
+
+        quats = np.stack([_aa_to_quat(aa[j]) for j in chain])
+        R = _aa_to_matrix(aa[0])
+        root = transl[0].detach().cpu().numpy().astype(np.float32) + R @ self._rest_root
+
+        toes = fl.toe_positions(rig, quats, root)
+        contacts = self._foot_contacts.step(toes)
+        corrected = self._foot_locker.step(
+            quats, root, contacts, ground=self._foot_contacts.floor,
+        )
+
+        # Only count frames where a foot is actually claimed to be planted --
+        # a swinging foot is *supposed* to move, so including it would dilute
+        # the measurement into meaninglessness.
+        planted = contacts > self._foot_locker.contact_threshold
+        if planted.any():
+            locked_toes = fl.toe_positions(rig, corrected, root)
+            if self._prev_toes_raw is not None:
+                raw = np.linalg.norm(toes - self._prev_toes_raw, axis=1)[planted]
+                got = np.linalg.norm(locked_toes - self._prev_toes_locked, axis=1)[planted]
+                self._slide_raw += float(raw.mean())
+                self._slide_locked += float(got.mean())
+                self._slide_n += 1
+            self._prev_toes_raw, self._prev_toes_locked = toes, locked_toes
+        else:
+            self._prev_toes_raw = self._prev_toes_locked = None
+
+        # Only hips, knees, ankles and toes are ever written; the root
+        # rotation is untouched by the solver, so it is left alone here.
+        out = aa.copy()
+        for slot, joint in enumerate(chain):
+            if joint == 0:
+                continue
+            out[joint] = _quat_to_aa(corrected[slot])
+        return torch.from_numpy(out.reshape(1, -1)).to(motion_frame.device)
+
     def _build_decimation(self) -> None:
         """Precompute the vertex subset for whichever character we render.
 
@@ -388,12 +518,25 @@ class MotionVisualizer:
             return
         wall = t2 - self._stat_t0
         n = self._stat_n
+        slide = ""
+        if self._slide_n:
+            raw_mm = self._slide_raw / self._slide_n * 1e3
+            got_mm = self._slide_locked / self._slide_n * 1e3
+            cut = (1.0 - got_mm / raw_mm) * 100.0 if raw_mm > 1e-9 else 0.0
+            churn = self._foot_locker.transitions if self._foot_locker else 0
+            slide = (f" | planted-foot slide {raw_mm:5.2f} -> {got_mm:5.2f} mm/frame "
+                     f"({cut:4.1f}% removed, n={self._slide_n}, "
+                     f"lock flips {churn})")
+            if self._foot_locker is not None:
+                self._foot_locker.transitions = 0
+            self._slide_raw = self._slide_locked = 0.0
+            self._slide_n = 0
         log("info",
             f"motion: {n / wall:5.1f} fps produced | "
             f"pose {self._stat_pose / n:5.1f} ms | "
             f"push {self._stat_push / n:5.1f} ms | "
             f"wall {wall / n * 1e3:5.1f} ms/frame | "
-            f"queue {self.queue.qsize()}")
+            f"queue {self.queue.qsize()}{slide}")
         self._stat_n = 0
         self._stat_pose = 0.0
         self._stat_push = 0.0
@@ -524,6 +667,14 @@ class MotionVisualizer:
 
             # print("Visualizing motion frame:", motion_frame.shape, exp_frame.shape, transl_frame.shape)
 
+            if self._foot_lock_enabled and self._foot_locker is not None:
+                try:
+                    motion_frame = self._lock_feet(motion_frame, transl_frame)
+                except Exception as exc:
+                    log("warning", f"motion_vis_server: foot locking failed, "
+                                   f"passing the frame through ({exc!r})")
+                    self._foot_lock_enabled = False
+
             smplx_body_pose = motion_frame[:, 3 : 22 * 3]
             smplx_global_orient = motion_frame[:, :3]
             smplx_lefthand = motion_frame[:, 25 * 3 : 40 * 3]
@@ -594,6 +745,16 @@ def main() -> None:
                              "streams only the vertex buffer. 'glb' re-exports "
                              "the whole mesh every frame (legacy; ~3x the "
                              "traffic, but keeps per-vertex Mixamo colours).")
+    parser.add_argument("--foot-locking", action=argparse.BooleanOptionalAction,
+                        default=False,
+                        help="Remove foot sliding online. MIBURI predicts "
+                             "lower-body pose and translation velocity "
+                             "independently, so a planted foot drifts a few "
+                             "cm/s. Corrects leg rotations only; root "
+                             "translation is untouched.")
+    parser.add_argument("--foot-lock-blend", type=float, default=0.5,
+                        help="Seconds over which a foot eases into and out of "
+                             "a lock. Lower is crisper but can pop.")
     parser.add_argument("--motion-stride", type=int, default=1,
                         help="Render only every Nth motion frame. 1 (default) "
                              "= all 25 fps. 2 halves both the GPU posing cost "
@@ -634,6 +795,8 @@ def main() -> None:
         mixamo_character_path=args.mixamo_character,
         motion_stream=args.motion_stream,
         motion_stride=args.motion_stride,
+        foot_locking=args.foot_locking,
+        foot_lock_blend=args.foot_lock_blend,
         decimate=args.motion_decimate,
         decimate_face_detail=args.decimate_face_detail,
     )

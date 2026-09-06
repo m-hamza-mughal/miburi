@@ -142,8 +142,39 @@ You can perform same steps for 23-spk experiment `scripts/miburi-demo-allspk`
 miburi-demo                                              # default demo
 miburi-demo --minimal-audio-ui                           # collapse the audio pane (only mic visible)
 miburi-demo --mixamo-character y_bot                     # render with a Mixamo character bundle
+miburi-demo --foot-locking                               # remove foot sliding (see below)
 miburi-demo --minimal-audio-ui --mixamo-character y_bot
 ```
+
+### Foot locking
+
+The Gesture LM predicts lower-body pose and translation velocity
+independently, so a planted foot drifts a few centimetres per second across
+the floor. `--foot-locking` removes that online:
+
+```bash
+miburi-demo --foot-locking                       # default 0.5 s lock blend
+miburi-demo --foot-locking --foot-lock-blend 0.3 # crisper, slightly poppier
+```
+
+Only leg rotations are corrected -- root translation is left exactly as the
+model produced it, so this composes with the existing velocity-to-position
+integration rather than fighting it. Costs ~2.6 ms per motion frame on CPU in
+the visualization process, and works for the Mixamo path too, since it
+operates on the SMPL-X pose that drives the character.
+
+Measured on live output, it removes **70-85%** of planted-foot travel in
+windows where contact is stable. Windows where contact flips several times do
+worse -- each lock and unlock blends the toe between its held and free
+positions, and that blend is itself motion -- so the contact detector uses
+hysteresis to hold a contact until the evidence is clearly against it.
+
+`miburi/utils/foot_locking.py` is a numpy port of the online path of MPI's
+[`body-models-postprocess`](https://gitlab.mpi-klsb.mpg.de/body-models/body-models-postprocess#foot-locking),
+whose solver core is Rust; porting it keeps the demo free of a Rust
+toolchain. `scripts/test_foot_locking.py` checks it, and will verify it
+frame-by-frame against the original if you build that crate and point
+`MIBURI_FOOT_LOCK_ORACLE` at the resulting `_rust.so`.
 
 If your env is named something other than `miburi` (e.g. `miburi_cu12`), override per call: `MIBURI_ENV=miburi_cu12 miburi-demo`.
 

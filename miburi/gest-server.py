@@ -177,6 +177,8 @@ def start_motion_server(
     motion_stream: str = "vertices",
     motion_decimate: int = 0,
     motion_stride: int = 1,
+    foot_locking: bool = False,
+    foot_lock_blend: float = 0.5,
 ) -> subprocess.Popen:
     cmd = [
         sys.executable,
@@ -196,7 +198,10 @@ def start_motion_server(
         str(motion_decimate),
         "--motion-stride",
         str(motion_stride),
+        "--foot-lock-blend",
+        str(foot_lock_blend),
     ]
+    cmd.append("--foot-locking" if foot_locking else "--no-foot-locking")
     if mixamo_character:
         cmd.extend(["--mixamo-character", mixamo_character])
     return subprocess.Popen(cmd)
@@ -809,6 +814,18 @@ def main():
              "~3x the traffic, keeps per-vertex Mixamo colours).",
     )
     parser.add_argument(
+        "--foot-locking", action=argparse.BooleanOptionalAction, default=False,
+        help="Remove foot sliding online with a causal locker. MIBURI "
+             "predicts lower-body pose and translation velocity "
+             "independently, so a planted foot drifts a few cm/s across the "
+             "floor. Corrects leg rotations only; root translation is left "
+             "as the model produced it.",
+    )
+    parser.add_argument(
+        "--foot-lock-blend", type=float, default=0.5,
+        help="Seconds over which a foot eases into and out of a lock.",
+    )
+    parser.add_argument(
         "--motion-stride", type=int, default=1,
         help="Render only every Nth motion frame (1 = all 25 fps). Halves "
              "both GPU posing cost and viewer bandwidth at 2. Viser coalesces "
@@ -1073,6 +1090,8 @@ def main():
         motion_stream=args.motion_stream,
         motion_decimate=args.motion_decimate,
         motion_stride=args.motion_stride,
+        foot_locking=args.foot_locking,
+        foot_lock_blend=args.foot_lock_blend,
     )
     front_proc = None
     if args.public_port:
