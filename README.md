@@ -143,6 +143,7 @@ miburi-demo                                              # default demo
 miburi-demo --minimal-audio-ui                           # collapse the audio pane (only mic visible)
 miburi-demo --mixamo-character y_bot                     # render with a Mixamo character bundle
 miburi-demo --foot-locking                               # remove foot sliding (see below)
+miburi-demo --ground-character                           # keep the feet on the floor
 miburi-demo --minimal-audio-ui --mixamo-character y_bot
 ```
 
@@ -168,6 +169,20 @@ windows where contact is stable. Windows where contact flips several times do
 worse -- each lock and unlock blends the toe between its held and free
 positions, and that blend is itself motion -- so the contact detector uses
 hysteresis to hold a contact until the evidence is clearly against it.
+
+### Grounding
+
+Nothing in the pipeline ties the character to the floor: root translation is
+integrated from a predicted velocity starting at an arbitrary height, so any
+constant bias in it persists and the feet end up above or below the floor
+plane. `--ground-character` closes that loop -- it measures the lowest drawn
+vertex against the floor and feeds the residual back into the next frame's
+translation.
+
+Measured on live output, the feet sat 5-16 mm below the floor; with grounding
+they hold +1 mm of it. It uses a trailing minimum over ~1.5 s rather than the
+instantaneous height, so a foot lifted mid-step does not drag the whole body
+downwards, and corrects gradually rather than snapping.
 
 `miburi/utils/foot_locking.py` is a numpy port of the online path of MPI's
 [`body-models-postprocess`](https://gitlab.mpi-klsb.mpg.de/body-models/body-models-postprocess#foot-locking),

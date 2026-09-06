@@ -179,6 +179,7 @@ def start_motion_server(
     motion_stride: int = 1,
     foot_locking: bool = False,
     foot_lock_blend: float = 0.5,
+    ground_character: bool = False,
 ) -> subprocess.Popen:
     cmd = [
         sys.executable,
@@ -202,6 +203,7 @@ def start_motion_server(
         str(foot_lock_blend),
     ]
     cmd.append("--foot-locking" if foot_locking else "--no-foot-locking")
+    cmd.append("--ground-character" if ground_character else "--no-ground-character")
     if mixamo_character:
         cmd.extend(["--mixamo-character", mixamo_character])
     return subprocess.Popen(cmd)
@@ -814,6 +816,14 @@ def main():
              "~3x the traffic, keeps per-vertex Mixamo colours).",
     )
     parser.add_argument(
+        "--ground-character", action=argparse.BooleanOptionalAction, default=False,
+        help="Keep the character standing on the floor. Root translation is "
+             "integrated from a predicted velocity starting at an arbitrary "
+             "height, so the feet can sit above or below the floor plane; "
+             "this measures the lowest drawn vertex against the floor and "
+             "corrects the difference.",
+    )
+    parser.add_argument(
         "--foot-locking", action=argparse.BooleanOptionalAction, default=False,
         help="Remove foot sliding online with a causal locker. MIBURI "
              "predicts lower-body pose and translation velocity "
@@ -1092,6 +1102,7 @@ def main():
         motion_stride=args.motion_stride,
         foot_locking=args.foot_locking,
         foot_lock_blend=args.foot_lock_blend,
+        ground_character=args.ground_character,
     )
     front_proc = None
     if args.public_port:

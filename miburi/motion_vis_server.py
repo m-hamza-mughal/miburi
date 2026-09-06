@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+from collections import deque
 import contextlib
 import struct
 import time
@@ -100,6 +101,8 @@ class MotionVisualizer:
         mixamo_character_path: str | Path | None = None,
         motion_stream: str = "vertices",
         motion_stride: int = 1,
+        ground_character: bool = False,
+        ground_seconds: float = 1.5,
         foot_locking: bool = False,
         foot_lock_blend: float = 0.5,
         decimate: int = 0,
@@ -148,6 +151,19 @@ class MotionVisualizer:
         self._slide_raw = 0.0
         self._slide_locked = 0.0
         self._slide_n = 0
+        self._mesh_bottom = None
+        # Vertical grounding. Nothing in the pipeline ties the character to
+        # the floor: velocity2position_mixeddiff integrates a predicted
+        # translation velocity from an arbitrary starting height, so any
+        # constant bias in it just persists and the feet sit above or below
+        # the drawn floor. This closes the loop -- measure the lowest drawn
+        # vertex against the floor and feed the residual back into the next
+        # frame's translation.
+        self._ground_enabled = bool(ground_character)
+        self._ground_offset = 0.0
+        self._ground_hist: deque[float] = deque(
+            maxlen=max(1, int(round(ground_seconds * 25.0))))
+        self._floor_y = 0.0
         self._prev_toes_raw = None
         self._prev_toes_locked = None
         self._keep_idx = None
@@ -343,6 +359,7 @@ class MotionVisualizer:
             # Keep state.floor pointing at the live handle so any future
             # floor toggle reads the live handle.
             self.shared_state.floor = new_handle
+            self._floor_y = floor_y
             log("info", f"motion_vis_server: floor at Y={floor_y:.3f} "
                        f"(runtime feet Y~={runtime_feet_y:.3f}, margin={margin:.2f}; "
                        f"{'mixamo' if self.mixamo_character is not None else 'smplx'})")
@@ -526,7 +543,13 @@ class MotionVisualizer:
             churn = self._foot_locker.transitions if self._foot_locker else 0
             slide = (f" | planted-foot slide {raw_mm:5.2f} -> {got_mm:5.2f} mm/frame "
                      f"({cut:4.1f}% removed, n={self._slide_n}, "
-                     f"lock flips {churn})")
+                     f"lock flips {churn}) | floor est {self._foot_contacts.floor:+.3f} m")
+        if self._mesh_bottom is not None:
+            slide += (f" | mesh bottom {self._mesh_bottom:+.3f} vs floor "
+                      f"{self._floor_y:+.3f} m")
+            if self._ground_enabled:
+                slide += f" (ground offset {self._ground_offset:+.3f})"
+            self._mesh_bottom = None
             if self._foot_locker is not None:
                 self._foot_locker.transitions = 0
             self._slide_raw = self._slide_locked = 0.0
@@ -685,6 +708,10 @@ class MotionVisualizer:
             expression = exp_frame
             smplx_betas = torch.zeros(motion_frame.shape[0], self.smplx_model.NUM_BETAS, device=device)
 
+            if self._ground_enabled:
+                smplx_transl = smplx_transl.clone()
+                smplx_transl[:, 1] -= self._ground_offset
+
             forward_kwargs = {
                 "shape": smplx_betas,
                 "expression": expression,
@@ -707,6 +734,19 @@ class MotionVisualizer:
                 if self._keep_idx is not None:
                     verts = verts[self._keep_idx]
                     faces = self._faces_dec
+                # Lowest drawn vertex: what a viewer actually judges as
+                # "standing on the floor". Runs for every stream mode, not
+                # only the decimated one.
+                low = float(verts[:, 1].min())
+                self._mesh_bottom = low if self._mesh_bottom is None else \
+                    min(self._mesh_bottom, low)
+                if self._ground_enabled:
+                    # Trailing minimum, not the instantaneous value: a foot
+                    # lifted mid-step is legitimately high, and chasing that
+                    # would drive the whole body downwards.
+                    self._ground_hist.append(low - self._floor_y)
+                    residual = min(self._ground_hist)
+                    self._ground_offset += 0.15 * residual
                 _t1 = time.perf_counter()
                 if self._mesh_handle is None:
                     self._mesh_handle = self.viser_server.scene.add_mesh_simple(
@@ -745,6 +785,14 @@ def main() -> None:
                              "streams only the vertex buffer. 'glb' re-exports "
                              "the whole mesh every frame (legacy; ~3x the "
                              "traffic, but keeps per-vertex Mixamo colours).")
+    parser.add_argument("--ground-character",
+                        action=argparse.BooleanOptionalAction, default=False,
+                        help="Keep the character standing on the floor. The "
+                             "translation velocity is integrated from an "
+                             "arbitrary starting height, so the feet can end "
+                             "up above or below the floor plane; this "
+                             "measures the lowest drawn vertex against the "
+                             "floor and corrects the offset.")
     parser.add_argument("--foot-locking", action=argparse.BooleanOptionalAction,
                         default=False,
                         help="Remove foot sliding online. MIBURI predicts "
@@ -795,6 +843,7 @@ def main() -> None:
         mixamo_character_path=args.mixamo_character,
         motion_stream=args.motion_stream,
         motion_stride=args.motion_stride,
+        ground_character=args.ground_character,
         foot_locking=args.foot_locking,
         foot_lock_blend=args.foot_lock_blend,
         decimate=args.motion_decimate,
