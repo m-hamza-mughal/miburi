@@ -142,54 +142,12 @@ You can perform same steps for 23-spk experiment `scripts/miburi-demo-allspk`
 miburi-demo                                              # default demo
 miburi-demo --minimal-audio-ui                           # collapse the audio pane (only mic visible)
 miburi-demo --mixamo-character y_bot                     # render with a Mixamo character bundle
-miburi-demo --foot-locking                               # remove foot sliding (see below)
+miburi-demo --foot-locking                               # remove foot sliding
 miburi-demo --ground-character                           # keep the feet on the floor
 miburi-demo --minimal-audio-ui --mixamo-character y_bot
 ```
 
-### Foot locking
-
-The Gesture LM predicts lower-body pose and translation velocity
-independently, so a planted foot drifts a few centimetres per second across
-the floor. `--foot-locking` removes that online:
-
-```bash
-miburi-demo --foot-locking                       # default 0.5 s lock blend
-miburi-demo --foot-locking --foot-lock-blend 0.3 # crisper, slightly poppier
-```
-
-Only leg rotations are corrected -- root translation is left exactly as the
-model produced it, so this composes with the existing velocity-to-position
-integration rather than fighting it. Costs ~2.6 ms per motion frame on CPU in
-the visualization process, and works for the Mixamo path too, since it
-operates on the SMPL-X pose that drives the character.
-
-Measured on live output, it removes **70-85%** of planted-foot travel in
-windows where contact is stable. Windows where contact flips several times do
-worse -- each lock and unlock blends the toe between its held and free
-positions, and that blend is itself motion -- so the contact detector uses
-hysteresis to hold a contact until the evidence is clearly against it.
-
-### Grounding
-
-Nothing in the pipeline ties the character to the floor: root translation is
-integrated from a predicted velocity starting at an arbitrary height, so any
-constant bias in it persists and the feet end up above or below the floor
-plane. `--ground-character` closes that loop -- it measures the lowest drawn
-vertex against the floor and feeds the residual back into the next frame's
-translation.
-
-Measured on live output, the feet sat 5-16 mm below the floor; with grounding
-they hold +1 mm of it. It uses a trailing minimum over ~1.5 s rather than the
-instantaneous height, so a foot lifted mid-step does not drag the whole body
-downwards, and corrects gradually rather than snapping.
-
-`miburi/utils/foot_locking.py` is a numpy port of the online path of MPI's
-[`body-models-postprocess`](https://gitlab.mpi-klsb.mpg.de/body-models/body-models-postprocess#foot-locking),
-whose solver core is Rust; porting it keeps the demo free of a Rust
-toolchain. `scripts/test_foot_locking.py` checks it, and will verify it
-frame-by-frame against the original if you build that crate and point
-`MIBURI_FOOT_LOCK_ORACLE` at the resulting `_rust.so`.
+Foot locking (`--foot-locking`) and grounding (`--ground-character`) are available as additional options in the live demo.
 
 If your env is named something other than `miburi` (e.g. `miburi_cu12`), override per call: `MIBURI_ENV=miburi_cu12 miburi-demo`.
 
